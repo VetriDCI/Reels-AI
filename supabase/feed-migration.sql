@@ -1,6 +1,0 @@
--- Run this after schema.sql. It keeps like/comment counters accurate.
-create or replace function public.reel_like_counter() returns trigger language plpgsql security definer set search_path=public as $$begin if tg_op='INSERT' then update public.reels set like_count=like_count+1 where id=new.reel_id; return new; else update public.reels set like_count=greatest(like_count-1,0) where id=old.reel_id; return old; end if; end;$$;
-drop trigger if exists reel_like_count_trigger on public.reel_likes; create trigger reel_like_count_trigger after insert or delete on public.reel_likes for each row execute procedure public.reel_like_counter();
-create or replace function public.reel_comment_counter() returns trigger language plpgsql security definer set search_path=public as $$begin if tg_op='INSERT' then update public.reels set comment_count=comment_count+1 where id=new.reel_id; return new; else update public.reels set comment_count=greatest(comment_count-1,0) where id=old.reel_id; return old; end if; end;$$;
-drop trigger if exists reel_comment_count_trigger on public.reel_comments; create trigger reel_comment_count_trigger after insert or delete on public.reel_comments for each row execute procedure public.reel_comment_counter();
-create policy "own comments delete" on public.reel_comments for delete using(auth.uid()=user_id);
