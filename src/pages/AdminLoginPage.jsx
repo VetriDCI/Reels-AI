@@ -20,9 +20,16 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setErrorText("");
     // Demo account is intentionally local-only for testing the Admin UI.
-    if (email.trim().toLowerCase() === DEMO_ADMIN.email && password === DEMO_ADMIN.password) {
+    // Trim both fields so stray spaces (mobile keyboards, copy-paste) don't block the demo login.
+    const typedEmail = email.trim().toLowerCase();
+    const typedPassword = password.trim();
+    if (typedEmail === DEMO_ADMIN.email && typedPassword === DEMO_ADMIN.password) {
       sessionStorage.setItem("reelsra_demo_admin", "1");
       navigate("/admin", { replace: true });
+      return;
+    }
+    if (typedEmail === DEMO_ADMIN.email && typedPassword !== DEMO_ADMIN.password) {
+      setErrorText(`Demo password thappu irukku. Correct password: ${DEMO_ADMIN.password} (copy-paste pannunga, extra space varama paarunga).`);
       return;
     }
     if (!supabase) {
