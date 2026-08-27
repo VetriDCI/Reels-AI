@@ -74,7 +74,7 @@ export default function Login() {
           {loading ? 'Please wait...' : 'Log in'}
         </button>
         <Link to="/register">Create account</Link>
-        <Link to="/forgot-password">Forgot password?</Link>
+        <Link to="/forgot-password">Forgot password?</Link><Link to="/admin/login" style={{marginTop:8,fontWeight:600}}>Admin Login</Link>
       </form>
     </main>
   );

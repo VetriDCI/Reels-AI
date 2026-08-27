@@ -16,6 +16,11 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+-- Admin role. Existing users remain normal users.
+alter table public.profiles add column if not exists role text not null default 'user';
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('user','admin'));
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles are viewable by everyone" on public.profiles;
@@ -171,3 +176,12 @@ create policy "authenticated users can upload their own reel media"
     and auth.role() = 'authenticated'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- AFTER creating your admin user in Supabase Authentication, run ONE of these:
+-- 1) Recommended: replace the email below and run:
+-- update public.profiles
+-- set role = 'admin'
+-- where id = (select id from auth.users where lower(email) = lower('YOUR_ADMIN_EMAIL'));
+--
+-- 2) Or set the Render/Vercel environment variable VITE_ADMIN_EMAIL to the
+-- admin email. The database role is still recommended for long-term security.
