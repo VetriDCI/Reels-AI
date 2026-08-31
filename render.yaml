@@ -1,6 +1,0 @@
-services:
-- type: web
-  name: ra-social
-  runtime: static
-  buildCommand: ''
-  staticPublishPath: web
