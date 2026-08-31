@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  email         String    @unique
+  passwordHash  String
+  fullName      String?
+  bio           String?   @default("")
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  posts         Post[]
+  comments      Comment[]
+  likes         Like[]
+  followers     Follow[]  @relation("followers")
+  following     Follow[]  @relation("following")
+  notifications Notification[] @relation("receivedNotifications")
+  sentNotifications Notification[] @relation("sentNotifications")
+  chats         Chat[]
+  messages      Message[]
+
+  @@index([username])
+  @@index([email])
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     String?
+  mediaUrl    String?
+  mediaType   String?
+  likes       Like[]
+  comments    Comment[]
+  hashtags    PostHashtag[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+  @@index([userId])
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+  @@index([postId])
+}
+
+model Follow {
+  followerId  String
+  follower    User   @relation("followers", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User   @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+model Hashtag {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  posts     PostHashtag[]
+
+  @@index([name])
+}
+
+model PostHashtag {
+  postId    String
+  post      Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  hashtagId String
+  hashtag   Hashtag @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, hashtagId])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  receiverId  String
+  receiver    User     @relation("receivedNotifications", fields: [receiverId], references: [id], onDelete: Cascade)
+  senderId    String?
+  sender      User?    @relation("sentNotifications", fields: [senderId], references: [id])
+  type        String
+  postId      String?
+  message     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([receiverId])
+  @@index([isRead])
+}
+
+model Chat {
+  id          String   @id @default(uuid())
+  participants User[]
+  messages    Message[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content   String
+  mediaUrl  String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([chatId])
+  @@index([senderId])
+}
