@@ -15,6 +15,9 @@ model User {
   fullName      String?
   bio           String?   @default("")
   avatarUrl     String?
+  role          String    @default("user")
+  status        String    @default("active")
+  earnings      Float     @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   posts         Post[]
