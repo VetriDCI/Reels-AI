@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  User, Calendar, Handshake, Wallet, Folder, Shield, Eye, Bell,
+  User, Calendar, Briefcase, Wallet, Folder, Shield, Eye, Bell,
   Palette, HelpCircle, LogOut, ChevronRight, Film, Users2, DollarSign
 } from 'lucide-react';
 import api from '../services/api';
@@ -23,7 +23,7 @@ import HelpSupportPage from './settings/HelpSupportPage';
 const menuItems = [
   { key: 'profileOverview', label: 'Profile Overview', icon: User, color: 'from-pink-500 to-purple-500' },
   { key: 'scheduler', label: 'Post Scheduler & Queue', icon: Calendar, color: 'from-purple-500 to-blue-500' },
-  { key: 'brandCollab', label: 'Brand Collaborations', icon: Handshake, color: 'from-pink-500 to-orange-400' },
+  { key: 'brandCollab', label: 'Brand Collaborations', icon: Briefcase, color: 'from-pink-500 to-orange-400' },
   { key: 'billing', label: 'Billing, Ads & Earnings', icon: Wallet, color: 'from-blue-500 to-cyan-400' },
   { key: 'archive', label: 'Content Archive', icon: Folder, color: 'from-indigo-500 to-blue-400' },
   { key: 'security', label: 'Account & Security', icon: Shield, color: 'from-purple-500 to-pink-500' },
