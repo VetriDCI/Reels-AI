@@ -1,20 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, X, Heart, MessageSquare, Share2, MoreHorizontal } from 'lucide-react';
+import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, Send } from 'lucide-react';
 import { postAPI, aiAPI } from './services/api';
 
 // Pages
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import ProfilePage from './pages/ProfilePage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import OtpVerificationPage from './pages/OtpVerificationPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import SearchPage from './pages/SearchPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ChatPage from './pages/ChatPage';
+import ReelsPage from './pages/ReelsPage';
+import MePage from './pages/MePage';
+import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage';
 
 // Components
 import CreatePostModal from './components/CreatePostModal';
 import PostCard from './components/PostCard';
+import InstallPrompt from './components/InstallPrompt';
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
@@ -23,6 +29,14 @@ function AppContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [feedRefresh, setFeedRefresh] = useState(0);
 
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('ra_social_interface'));
+      if (saved) applyInterfacePrefs(saved);
+    } catch {
+      /* no saved prefs yet */
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -37,28 +51,34 @@ function AppContent() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/verify-otp" element={<OtpVerificationPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
   }
 
+  const isFullScreenTab = activeTab === 'reels' || activeTab === 'me';
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopBar logout={logout} />
-      
-      <main className="pb-20">
+      {!isFullScreenTab && <TopBar logout={logout} />}
+
+      <main className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} />}
-        {activeTab === 'reels' && <ReelsFeed />}
-        {activeTab === 'ai' && <AIFeatures />}
+        {activeTab === 'reels' && <ReelsPage />}
+        {activeTab === 'ai' && <AIChatFeature />}
         {activeTab === 'chat' && <ChatPage />}
-        {activeTab === 'me' && <ProfilePage />}
+        {activeTab === 'me' && <MePage onLogout={logout} />}
       </main>
 
       {showCreateModal && (
         <CreatePostModal onClose={() => setShowCreateModal(false)} onPostCreated={() => setFeedRefresh((prev) => prev + 1)} />
       )}
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} setShowCreateModal={setShowCreateModal} />
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} setShowCreateModal={setShowCreateModal} isFullScreenTab={isFullScreenTab} />
+      <InstallPrompt />
     </div>
   );
 }
@@ -101,7 +121,7 @@ function TopBar({ logout }) {
   );
 }
 
-function BottomNav({ activeTab, setActiveTab, setShowCreateModal }) {
+function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTab }) {
   const navItems = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'reels', icon: Film, label: 'Reels' },
@@ -120,7 +140,7 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal }) {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
+    <nav className={`fixed bottom-0 left-0 right-0 z-50 ${isFullScreenTab ? 'bg-black/40 backdrop-blur-sm' : 'bg-white border-t border-gray-200'}`}>
       <div className="flex items-center justify-around py-2">
         {navItems.map((item) => (
           <button
@@ -128,10 +148,10 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal }) {
             onClick={() => handleNavClick(item.id)}
             className={`flex flex-col items-center p-2 ${
               item.isSpecial 
-                ? 'bg-gradient-to-r from-purple-600 to-pink-600 rounded-full p-3 -mt-4 shadow-lg' 
+                ? 'bg-gradient-to-r from-pink-500 to-blue-500 rounded-full p-3 -mt-4 shadow-lg' 
                 : activeTab === item.id 
-                  ? 'text-purple-600' 
-                  : 'text-gray-500'
+                  ? (isFullScreenTab ? 'text-white' : 'text-pink-600')
+                  : (isFullScreenTab ? 'text-gray-300' : 'text-gray-500')
             }`}
           >
             <item.icon className={`w-6 h-6 ${item.isSpecial ? 'text-white' : ''}`} />
@@ -181,111 +201,94 @@ function HomeFeed({ posts, setPosts, refreshKey }) {
   );
 }
 
-function ReelsFeed() {
-  return (
-    <div className="pt-20 px-4">
-      <div className="text-center py-20">
-        <Film className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">Reels Coming Soon</h2>
-        <p className="text-gray-500 mt-2">Start creating short videos!</p>
-      </div>
-    </div>
-  );
-}
-
-function AIFeatures() {
-  const [activeFeature, setActiveFeature] = useState(null);
-  const [inputText, setInputText] = useState('');
-  const [result, setResult] = useState('');
+function AIChatFeature() {
+  const [messages, setMessages] = useState([
+    { role: 'ai', text: "Vanakkam! I'm Super AI ✨ Ask me for reel ideas, Tamil captions, or growth tips." },
+  ]);
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const endRef = useRef(null);
 
-  const features = [
-    { id: 'caption', name: 'AI Caption', icon: Sparkles, color: 'from-purple-500 to-pink-500', description: 'Generate catchy captions' },
-    { id: 'translate', name: 'AI Translate', icon: Sparkles, color: 'from-blue-500 to-cyan-500', description: 'Translate to any language' },
-    { id: 'moderate', name: 'Content Safety', icon: Sparkles, color: 'from-green-500 to-emerald-500', description: 'Check content guidelines' },
-    { id: 'chat', name: 'AI Assistant', icon: Sparkles, color: 'from-orange-500 to-red-500', description: 'Chat with AI helper' }
-  ];
+  const suggestions = ['Create viral reel idea', 'Tamil caption for my post', 'Trending hashtags', 'Growth tips'];
 
-  const handleSubmit = async () => {
-    if (!inputText) return;
-    
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async (text) => {
+    const msg = text || input;
+    if (!msg.trim()) return;
+    setMessages((prev) => [...prev, { role: 'user', text: msg }]);
+    setInput('');
     setLoading(true);
     try {
-      let response;
-      
-      switch (activeFeature) {
-        case 'caption':
-          response = await aiAPI.generateCaption({ context: inputText });
-          setResult(response.data.data.caption);
-          break;
-        case 'translate':
-          response = await aiAPI.translate({ text: inputText, targetLanguage: 'ta' });
-          setResult(response.data.data.translatedText);
-          break;
-        case 'moderate':
-          response = await aiAPI.moderate({ content: inputText });
-          setResult(response.data.data.isSafe ? '✅ Safe to post' : '⚠️ ' + response.data.data.reason);
-          break;
-        case 'chat':
-          response = await aiAPI.chat({ message: inputText });
-          setResult(response.data.data.response);
-          break;
-        default:
-          break;
-      }
-    } catch (error) {
-      console.error('AI feature error:', error);
-      setResult('Failed to process. Please try again.');
+      const res = await aiAPI.chat({ message: msg });
+      setMessages((prev) => [...prev, { role: 'ai', text: res.data.data.response }]);
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'ai', text: 'Sorry, I had trouble responding. Please try again.' }]);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="pt-20 px-4 min-h-screen">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">AI Features</h2>
-      
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        {features.map((feature) => (
-          <button
-            key={feature.id}
-            onClick={() => setActiveFeature(feature.id)}
-            className={`bg-gradient-to-br ${feature.color} rounded-xl p-6 text-white text-left transition-transform hover:scale-105`}
-          >
-            <feature.icon className="w-8 h-8 mb-3" />
-            <h3 className="font-semibold text-lg">{feature.name}</h3>
-            <p className="text-sm opacity-90 mt-1">{feature.description}</p>
-          </button>
-        ))}
+    <div className="pt-16 pb-4 flex flex-col h-screen bg-gradient-to-b from-pink-50 to-blue-50">
+      <div className="bg-gradient-to-r from-pink-500 to-blue-500 text-white px-4 py-3 flex items-center gap-2 fixed top-0 left-0 right-0 z-40">
+        <Sparkles className="w-5 h-5" />
+        <span className="font-bold">Super AI</span>
+        <span className="ml-auto text-xs bg-white/20 px-2 py-1 rounded-full">● Online</span>
       </div>
 
-      {activeFeature && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h3 className="text-xl font-semibold mb-4">{features.find(f => f.id === activeFeature)?.name}</h3>
-          
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Enter your text here..."
-            className="w-full h-32 border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          />
-          
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !inputText}
-            className="mt-4 px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold disabled:opacity-50"
-          >
-            {loading ? 'Processing...' : 'Generate'}
-          </button>
-
-          {result && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold mb-2">Result:</h4>
-              <p className="text-gray-700">{result}</p>
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm ${
+                m.role === 'user'
+                  ? 'bg-gradient-to-r from-pink-500 to-blue-500 text-white rounded-br-sm'
+                  : 'bg-white text-gray-800 shadow-sm rounded-bl-sm'
+              }`}
+            >
+              {m.text}
             </div>
-          )}
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-white text-gray-400 px-4 py-3 rounded-2xl shadow-sm text-sm">Typing...</div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {messages.length <= 1 && (
+        <div className="px-4 pb-2 flex flex-wrap gap-2">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => sendMessage(s)}
+              className="px-3 py-2 bg-white border border-pink-200 rounded-full text-xs font-medium text-pink-600"
+            >
+              {s}
+            </button>
+          ))}
         </div>
       )}
+
+      <div className="px-4 pb-24 pt-2">
+        <div className="flex items-center gap-2 bg-white rounded-full shadow-sm px-4 py-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            placeholder="Ask Super AI..."
+            className="flex-1 outline-none text-sm"
+          />
+          <button onClick={() => sendMessage()} disabled={loading} className="w-9 h-9 rounded-full bg-gradient-to-r from-pink-500 to-blue-500 flex items-center justify-center">
+            <Send className="w-4 h-4 text-white" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
