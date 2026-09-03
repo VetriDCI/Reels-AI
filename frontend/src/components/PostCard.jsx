@@ -1,73 +1,80 @@
-import React from 'react';
-import { Heart, MessageSquare, Share2, MoreHorizontal, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Heart, MessageSquare, Share2, Trash2, Send, X } from 'lucide-react';
 import { postAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 function PostCard({ post, onLike }) {
   const { user } = useAuth();
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [comment, setComment] = useState('');
+  const [comments, setComments] = useState([]);
+  const [sharing, setSharing] = useState(false);
 
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this post?')) return;
+    try { await postAPI.delete(post.id); window.location.reload(); }
+    catch (error) { alert(error.response?.data?.message || 'Failed to delete post'); }
+  };
+
+  const loadComments = async () => {
+    setCommentOpen(true);
     try {
-      await postAPI.delete(post.id);
-      window.location.reload();
-    } catch (error) {
-      console.error('Failed to delete post:', error);
-      alert('Failed to delete post');
-    }
+      const res = await postAPI.getById(post.id);
+      setComments(res.data.data.comments || []);
+    } catch (e) { console.error(e); }
+  };
+
+  const addComment = async () => {
+    if (!comment.trim()) return;
+    try {
+      const res = await postAPI.addComment(post.id, comment.trim());
+      setComments(prev => [res.data.data, ...prev]);
+      setComment('');
+    } catch (e) { alert(e.response?.data?.message || 'Failed to add comment'); }
+  };
+
+  const share = async () => {
+    const url = `${window.location.origin}/?post=${post.id}`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'RA Social post', text: post.content || 'Check this post', url });
+      else { await navigator.clipboard.writeText(url); alert('Post link copied'); }
+      setSharing(true); setTimeout(() => setSharing(false), 1200);
+    } catch {}
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center space-x-3">
-          <img src={post.user.avatarUrl || `https://i.pravatar.cc/150?u=${post.user.id}`} alt={post.user.username} className="w-10 h-10 rounded-full object-cover" />
-          <div>
-            <h3 className="font-semibold text-gray-900">{post.user.fullName || post.user.username}</h3>
-            <p className="text-sm text-gray-500">@{post.user.username}</p>
-          </div>
+          <img src={post.user?.avatarUrl || `https://i.pravatar.cc/150?u=${post.user?.id}`} alt="" className="w-10 h-10 rounded-full object-cover" />
+          <div><h3 className="font-semibold text-gray-900">{post.user?.fullName || post.user?.username}</h3><p className="text-sm text-gray-500">@{post.user?.username}</p></div>
         </div>
-        {user?.id === post.user.id && (
-          <button onClick={handleDelete} className="p-2 hover:bg-red-50 rounded-full text-gray-500 hover:text-red-600">
-            <Trash2 className="w-5 h-5" />
-          </button>
-        )}
+        {user?.id === post.user?.id && <button onClick={handleDelete} className="p-2 hover:bg-red-50 rounded-full text-gray-500 hover:text-red-600"><Trash2 className="w-5 h-5" /></button>}
       </div>
 
-      <div className="px-4 pb-3">
-        <p className="text-gray-800">{post.content}</p>
-        {post.hashtags && post.hashtags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {post.hashtags.map((tag, index) => (
-              <span key={index} className="text-purple-600 text-sm font-medium">{tag}</span>
-            ))}
-          </div>
-        )}
-      </div>
+      {post.content && <div className="px-4 pb-3"><p className="text-gray-800 whitespace-pre-wrap break-words">{post.content}</p>
+        {post.hashtags?.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{post.hashtags.map((tag,i)=><span key={i} className="text-purple-600 text-sm font-medium">#{String(tag).replace(/^#/,'')}</span>)}</div>}
+      </div>}
 
-      {post.mediaUrl && (
-        <div className="px-4 pb-3">
-          <img src={post.mediaUrl} alt="Post media" className="w-full h-64 object-cover rounded-lg" />
-        </div>
-      )}
+      {post.mediaUrl && <div className="px-4 pb-3">
+        {post.mediaType === 'video' ? <video src={post.mediaUrl} controls playsInline preload="metadata" className="w-full max-h-[70vh] rounded-lg bg-black" /> :
+          <img src={post.mediaUrl} alt="Post media" loading="lazy" className="w-full max-h-[70vh] object-contain rounded-lg bg-gray-100" onError={e => {e.currentTarget.alt='Media unavailable';}} />}
+      </div>}
 
-      <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-        <div className="flex items-center space-x-6">
-          <button onClick={onLike} className="flex items-center space-x-2 text-gray-600 hover:text-red-500">
-            <Heart className="w-6 h-6" />
-            <span className="text-sm">{post.likesCount || 0}</span>
-          </button>
-          <button className="flex items-center space-x-2 text-gray-600 hover:text-blue-500">
-            <MessageSquare className="w-6 h-6" />
-            <span className="text-sm">{post.commentsCount || 0}</span>
-          </button>
-          <button className="flex items-center space-x-2 text-gray-600 hover:text-green-500">
-            <Share2 className="w-6 h-6" />
-          </button>
+      <div className="flex items-center justify-between px-4 py-3 border-t">
+        <div className="flex items-center space-x-5">
+          <button onClick={onLike} className="flex items-center gap-2 text-gray-600 hover:text-red-500"><Heart className="w-6 h-6" /><span>{post.likesCount || 0}</span></button>
+          <button onClick={loadComments} className="flex items-center gap-2 text-gray-600 hover:text-blue-500"><MessageSquare className="w-6 h-6" /><span>{post.commentsCount || 0}</span></button>
+          <button onClick={share} className="flex items-center gap-2 text-gray-600 hover:text-green-500"><Share2 className="w-6 h-6" />{sharing && <span className="text-xs">Copied</span>}</button>
         </div>
       </div>
-    </div>
+
+      {commentOpen && <div className="border-t p-4">
+        <div className="flex justify-between mb-3"><b>Comments</b><button onClick={()=>setCommentOpen(false)}><X className="w-5 h-5"/></button></div>
+        <div className="flex gap-2 mb-3"><input value={comment} onChange={e=>setComment(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addComment()} placeholder="Write a comment..." className="flex-1 border rounded-full px-4 py-2"/><button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white"><Send className="w-4 h-4"/></button></div>
+        <div className="space-y-2 max-h-48 overflow-y-auto">{comments.map(c=><div key={c.id} className="text-sm bg-gray-50 rounded-lg p-2"><b>{c.user?.fullName || c.user?.username}</b> {c.content}</div>)}</div>
+      </div>}
+    </article>
   );
 }
-
 export default PostCard;

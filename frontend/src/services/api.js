@@ -24,6 +24,16 @@ export const authAPI = {
   updateProfile: (data) => api.put('/auth/profile', data)
 };
 
+export const uploadAPI = {
+  media: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/posts/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+};
+
 export const postAPI = {
   create: (data) => api.post('/posts', data),
   getFeed: (page = 1, limit = 10) => api.get(`/posts/feed?page=${page}&limit=${limit}`),

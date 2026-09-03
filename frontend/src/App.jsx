@@ -63,7 +63,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {!isFullScreenTab && <TopBar logout={logout} />}
+      {!isFullScreenTab && <TopBar logout={logout} onNotifications={() => setActiveTab('notifications')} onSearch={() => setActiveTab('search')} />}
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} />}
@@ -71,6 +71,8 @@ function AppContent() {
         {activeTab === 'ai' && <AIChatFeature />}
         {activeTab === 'chat' && <ChatPage />}
         {activeTab === 'me' && <MePage onLogout={logout} />}
+        {activeTab === 'notifications' && <NotificationsPage />}
+        {activeTab === 'search' && <SearchPage />}
       </main>
 
       {showCreateModal && (
@@ -83,7 +85,7 @@ function AppContent() {
   );
 }
 
-function TopBar({ logout }) {
+function TopBar({ logout, onNotifications, onSearch }) {
   return (
     <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
       <div className="flex items-center justify-between px-4 py-3">
@@ -97,18 +99,14 @@ function TopBar({ logout }) {
         </div>
 
         <div className="flex-1 mx-4 max-w-md">
-          <div className="relative">
+          <button onClick={onSearch} className="relative w-full text-left">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search posts, users, hashtags..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-          </div>
+            <span className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500">Search posts, users, hashtags...</span>
+          </button>
         </div>
 
         <div className="flex items-center space-x-3">
-          <button className="relative p-2 hover:bg-gray-100 rounded-full">
+          <button onClick={onNotifications} aria-label="Notifications" className="relative p-2 hover:bg-gray-100 rounded-full">
             <Bell className="w-6 h-6 text-gray-700" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
           </button>

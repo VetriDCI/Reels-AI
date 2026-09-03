@@ -43,6 +43,7 @@ model Post {
   mediaType   String?
   likes       Like[]
   comments    Comment[]
+  notifications Notification[]
   hashtags    PostHashtag[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -111,6 +112,7 @@ model Notification {
   sender      User?    @relation("sentNotifications", fields: [senderId], references: [id])
   type        String
   postId      String?
+  post        Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
   message     String
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())

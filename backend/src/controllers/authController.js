@@ -48,6 +48,9 @@ export const login = async (req, res) => {
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
+    if (user.status === 'blocked') {
+      return res.status(403).json({ success: false, message: 'Your account has been blocked by an administrator' });
+    }
 
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
 
@@ -78,8 +81,8 @@ export const getMe = async (req, res) => {
       select: {
         id: true, username: true, email: true, fullName: true, bio: true, avatarUrl: true, earnings: true, createdAt: true,
         posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 9 },
-followers: { select: { followerId: true } },
-following: { select: { followingId: true } }
+        followers: { select: { id: true } },
+        following: { select: { id: true } }
       }
     });
 

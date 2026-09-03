@@ -6,6 +6,7 @@ export default function ReelsPage() {
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState(0);
+  const [videoErrors, setVideoErrors] = useState({});
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -73,7 +74,10 @@ export default function ReelsPage() {
             muted
             playsInline
             autoPlay={i === current}
+            controls
+            onError={() => setVideoErrors(prev => ({ ...prev, [reel.id]: true }))}
           />
+          {videoErrors[reel.id] && <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 rounded-xl bg-black/80 p-4 text-center text-sm text-red-300">This video could not be loaded. The media URL may have expired.</div>}
 
           <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-4 text-white bg-gradient-to-b from-black/60 to-transparent pb-8">
             <span className="font-bold text-lg flex items-center gap-1">

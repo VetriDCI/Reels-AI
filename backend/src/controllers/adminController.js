@@ -50,6 +50,11 @@ export const adminForgotPassword = async (req, res) => {
       return res.status(404).json({ error: 'Email not found. Please contact support.' });
     }
 
+    // NOTE: No email-sending service (SMTP/SendGrid/Resend) is wired up in this
+    // project yet, so a real reset link can't be emailed out right now. This
+    // endpoint confirms the admin account exists so the frontend isn't relying
+    // on a hardcoded email check. Wire up an email provider here later to
+    // actually send the reset link.
     res.json({ message: 'If email service is configured, a reset link would be sent here.' });
   } catch (error) {
     console.error('Admin forgot password error:', error);
@@ -67,6 +72,9 @@ export const getAdminStats = async (req, res) => {
       prisma.user.count({ where: { status: 'active' } }),
     ]);
 
+    // Payouts and content-reporting features aren't built yet (no Payout or
+    // Report models exist in the schema), so these stay at 0 until those
+    // features are added rather than showing fabricated numbers.
     res.json({
       totalUsers,
       totalPosts,
@@ -100,6 +108,7 @@ export const getAdminUsers = async (req, res) => {
       },
     });
 
+    // Mapped to snake_case to match what the admin dashboard UI expects.
     const mapped = users.map((u) => ({
       id: u.id,
       username: u.username,
@@ -117,6 +126,81 @@ export const getAdminUsers = async (req, res) => {
   }
 };
 
+// GET /api/admin/posts?limit=20
+export const getAdminPosts = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+
+    const posts = await prisma.post.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        user: { select: { id: true, username: true, fullName: true } },
+        likes: { select: { id: true } },
+        comments: { select: { id: true } },
+      },
+    });
+
+    const mapped = posts.map((p) => ({
+      id: p.id,
+      content: p.content,
+      media_url: p.mediaUrl,
+      media_type: p.mediaType,
+      author: p.user?.fullName || p.user?.username || 'Unknown',
+      likes_count: p.likes.length,
+      comments_count: p.comments.length,
+      created_at: p.createdAt,
+    }));
+
+    res.json(mapped);
+  } catch (error) {
+    console.error('Admin posts error:', error);
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+};
+
+// DELETE /api/admin/posts/:id
+export const deleteAdminPost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.post.delete({ where: { id } });
+    res.json({ message: 'Post deleted' });
+  } catch (error) {
+    console.error('Admin delete post error:', error);
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+};
+
+// PUT /api/admin/change-password
+export const changeAdminPassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new password are required' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+
+    const admin = await prisma.user.findUnique({ where: { id: req.userId } });
+    const isValid = await bcrypt.compare(currentPassword, admin.passwordHash);
+
+    if (!isValid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    await prisma.user.update({ where: { id: req.userId }, data: { passwordHash } });
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Change admin password error:', error);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+};
 // PATCH /api/admin/users/:id/status
 export const updateUserStatus = async (req, res) => {
   try {

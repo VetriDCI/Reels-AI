@@ -8,6 +8,7 @@ function NotificationsPage() {
 
   useEffect(() => {
     fetchNotifications();
+    api.put('/notifications/read').catch(() => {});
   }, []);
 
   const fetchNotifications = async () => {
