@@ -1,22 +1,43 @@
-import React, { useState } from 'react';
-import { ChevronLeft, Edit3 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { ChevronLeft, Edit3, Camera } from 'lucide-react';
 import api from '../../services/api';
+import { uploadAPI } from '../../services/api';
 
 export default function ProfileOverviewPage({ user, onBack, onUpdated }) {
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [bio, setBio] = useState(user?.bio || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr('');
+    setUploadingPhoto(true);
+    try {
+      const res = await uploadAPI.media(file);
+      setAvatarUrl(res.data.data.url);
+    } catch (error) {
+      setErr(error.response?.data?.message || 'Failed to upload photo');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
     setMsg('');
+    setErr('');
     try {
-      await api.put('/auth/profile', { fullName, bio });
+      await api.put('/auth/profile', { fullName, bio, avatarUrl });
       setMsg('Saved successfully!');
       onUpdated?.();
     } catch {
-      setMsg('Failed to save changes');
+      setErr('Failed to save changes');
     } finally {
       setSaving(false);
     }
@@ -30,6 +51,27 @@ export default function ProfileOverviewPage({ user, onBack, onUpdated }) {
       </div>
 
       <div className="p-4">
+        <div className="flex flex-col items-center mb-4">
+          <div className="relative">
+            <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-pink-400 to-blue-400 flex items-center justify-center border-4 border-white shadow-md">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-bold text-white">{(fullName?.[0] || user?.username?.[0] || 'U').toUpperCase()}</span>
+              )}
+            </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="absolute bottom-0 right-0 w-8 h-8 bg-gradient-to-br from-pink-500 to-blue-500 rounded-full flex items-center justify-center border-2 border-white"
+            >
+              <Camera className="w-4 h-4 text-white" />
+            </button>
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
+          </div>
+          {uploadingPhoto && <p className="text-xs text-gray-500 mt-2">Uploading photo...</p>}
+        </div>
+
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-9 h-9 bg-gradient-to-br from-pink-500 to-blue-500 rounded-xl flex items-center justify-center">
@@ -55,6 +97,7 @@ export default function ProfileOverviewPage({ user, onBack, onUpdated }) {
         </div>
 
         {msg && <p className="text-center text-sm mt-4 text-green-600">{msg}</p>}
+        {err && <p className="text-center text-sm mt-4 text-red-600">{err}</p>}
 
         <button
           onClick={handleSave}

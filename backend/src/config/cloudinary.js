@@ -10,11 +10,16 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: 'ra-social',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'mp4', 'mov', 'gif'],
-    transformation: [{ width: 1920, height: 1080, crop: 'limit' }]
-  }
+  params: async (req, file) => {
+    const isVideo = file.mimetype?.startsWith('video/');
+    return {
+      folder: 'ra-social',
+      resource_type: 'auto', // critical: without this, videos get stored as 'image' resource and won't play
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'webm'],
+      // Only apply image resize transformation to images — video transformations need different handling.
+      transformation: isVideo ? undefined : [{ width: 1920, height: 1080, crop: 'limit' }],
+    };
+  },
 });
 
 const upload = multer({ 

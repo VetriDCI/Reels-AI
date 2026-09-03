@@ -1,12 +1,15 @@
 import axios from 'axios';
 
+const MODEL = 'meta/llama-3.1-70b-instruct';
+
 class NvidiaAIService {
   constructor() {
     this.apiKey = process.env.NVIDIA_API_KEY;
     this.baseURL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
-    
+
     this.client = axios.create({
       baseURL: this.baseURL,
+      timeout: 20000,
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json'
@@ -14,10 +17,32 @@ class NvidiaAIService {
     });
   }
 
+  // Returns a clear error instead of silently trying (and failing) an API
+  // call when the key hasn't actually been configured yet.
+  _keyMissing() {
+    if (!this.apiKey || this.apiKey.includes('your-nvidia') || this.apiKey === 'nvapi-your-nvidia-api-key') {
+      return 'NVIDIA_API_KEY is not set on the backend yet — add your real key in Render → Environment, then redeploy.';
+    }
+    return null;
+  }
+
+  // Extracts NVIDIA's actual error message so failures are debuggable
+  // instead of a generic "failed" message with no explanation.
+  _extractError(error) {
+    const detail = error.response?.data?.detail || error.response?.data?.error?.message || error.response?.data?.message;
+    if (detail) return detail;
+    if (error.response?.status) return `NVIDIA API returned ${error.response.status}`;
+    if (error.code === 'ECONNABORTED') return 'NVIDIA API request timed out';
+    return error.message || 'Unknown error contacting NVIDIA API';
+  }
+
   async generateCaption(imageUrl, context = '') {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, error: keyError };
+
     try {
       const response = await this.client.post('/chat/completions', {
-        model: 'meta/llama-3.1-70b-instruct',
+        model: MODEL,
         messages: [
           {
             role: 'system',
@@ -34,15 +59,19 @@ class NvidiaAIService {
 
       return { success: true, caption: response.data.choices[0].message.content.trim() };
     } catch (error) {
-      console.error('NVIDIA caption generation error:', error);
-      return { success: false, error: 'Failed to generate caption' };
+      const msg = this._extractError(error);
+      console.error('NVIDIA caption generation error:', msg);
+      return { success: false, error: msg };
     }
   }
 
   async generateHashtags(content) {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, error: keyError };
+
     try {
       const response = await this.client.post('/chat/completions', {
-        model: 'meta/llama-3.1-70b-instruct',
+        model: MODEL,
         messages: [
           {
             role: 'system',
@@ -62,17 +91,21 @@ class NvidiaAIService {
 
       return { success: true, hashtags: hashtags.slice(0, 10) };
     } catch (error) {
-      console.error('NVIDIA hashtag generation error:', error);
-      return { success: false, error: 'Failed to generate hashtags' };
+      const msg = this._extractError(error);
+      console.error('NVIDIA hashtag generation error:', msg);
+      return { success: false, error: msg };
     }
   }
 
   async translateText(text, targetLanguage = 'ta') {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, error: keyError };
+
     try {
-      const languages = { 'ta': 'Tamil', 'hi': 'Hindi', 'en': 'English', 'es': 'Spanish', 'fr': 'French' };
-      
+      const languages = { ta: 'Tamil', hi: 'Hindi', en: 'English', es: 'Spanish', fr: 'French' };
+
       const response = await this.client.post('/chat/completions', {
-        model: 'meta/llama-3.1-70b-instruct',
+        model: MODEL,
         messages: [
           {
             role: 'system',
@@ -86,15 +119,19 @@ class NvidiaAIService {
 
       return { success: true, translatedText: response.data.choices[0].message.content.trim() };
     } catch (error) {
-      console.error('NVIDIA translation error:', error);
-      return { success: false, error: 'Failed to translate' };
+      const msg = this._extractError(error);
+      console.error('NVIDIA translation error:', msg);
+      return { success: false, error: msg };
     }
   }
 
   async moderateContent(content) {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, isSafe: true, error: keyError };
+
     try {
       const response = await this.client.post('/chat/completions', {
-        model: 'meta/llama-3.1-70b-instruct',
+        model: MODEL,
         messages: [
           {
             role: 'system',
@@ -111,19 +148,23 @@ class NvidiaAIService {
 
       return { success: true, isSafe, reason: analysis };
     } catch (error) {
-      console.error('NVIDIA moderation error:', error);
-      return { success: false, isSafe: true, error: 'Failed to moderate' };
+      const msg = this._extractError(error);
+      console.error('NVIDIA moderation error:', msg);
+      return { success: false, isSafe: true, error: msg };
     }
   }
 
   async chatWithAI(userMessage, context = '') {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, error: keyError };
+
     try {
       const response = await this.client.post('/chat/completions', {
-        model: 'meta/llama-3.1-70b-instruct',
+        model: MODEL,
         messages: [
           {
             role: 'system',
-            content: 'You are RA Social\'s friendly AI assistant. Help users with questions about the app, give tips for social media, and be conversational. Keep responses under 200 characters.'
+            content: "You are RA Social's friendly AI assistant. Help users with questions about the app, give tips for social media, and be conversational. Keep responses under 200 characters."
           },
           {
             role: 'user',
@@ -136,8 +177,9 @@ class NvidiaAIService {
 
       return { success: true, response: response.data.choices[0].message.content.trim() };
     } catch (error) {
-      console.error('NVIDIA chat error:', error);
-      return { success: false, error: 'Failed to chat' };
+      const msg = this._extractError(error);
+      console.error('NVIDIA chat error:', msg);
+      return { success: false, error: msg };
     }
   }
 }

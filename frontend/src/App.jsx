@@ -63,14 +63,21 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {!isFullScreenTab && <TopBar logout={logout} onNotifications={() => setActiveTab('notifications')} onSearch={() => setActiveTab('search')} />}
+      {!isFullScreenTab && (
+        <TopBar
+          logout={logout}
+          onNotifications={() => setActiveTab('notifications')}
+          onSearch={() => setActiveTab('search')}
+          onProfile={() => setActiveTab('me')}
+        />
+      )}
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} />}
-        {activeTab === 'reels' && <ReelsPage />}
+        {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} onSearch={() => setActiveTab('search')} />}
         {activeTab === 'ai' && <AIChatFeature />}
         {activeTab === 'chat' && <ChatPage />}
-        {activeTab === 'me' && <MePage onLogout={logout} />}
+        {activeTab === 'me' && <MePage onLogout={logout} onBack={() => setActiveTab('home')} />}
         {activeTab === 'notifications' && <NotificationsPage />}
         {activeTab === 'search' && <SearchPage />}
       </main>
@@ -85,7 +92,7 @@ function AppContent() {
   );
 }
 
-function TopBar({ logout, onNotifications, onSearch }) {
+function TopBar({ logout, onNotifications, onSearch, onProfile }) {
   return (
     <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
       <div className="flex items-center justify-between px-4 py-3">
@@ -110,8 +117,8 @@ function TopBar({ logout, onNotifications, onSearch }) {
             <Bell className="w-6 h-6 text-gray-700" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
           </button>
-          <button onClick={logout} className="text-sm text-gray-600 hover:text-red-600">
-            Logout
+          <button onClick={onProfile} aria-label="My Profile" className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden">
+            <User className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -125,8 +132,7 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTa
     { id: 'reels', icon: Film, label: 'Reels' },
     { id: 'create', icon: Plus, label: 'Create', isSpecial: true },
     { id: 'ai', icon: Sparkles, label: 'AI' },
-    { id: 'chat', icon: MessageCircle, label: 'Chat' },
-    { id: 'me', icon: User, label: 'Me' }
+    { id: 'chat', icon: MessageCircle, label: 'Chat' }
   ];
 
   const handleNavClick = (itemId) => {
@@ -223,7 +229,8 @@ function AIChatFeature() {
       const res = await aiAPI.chat({ message: msg });
       setMessages((prev) => [...prev, { role: 'ai', text: res.data.data.response }]);
     } catch (err) {
-      setMessages((prev) => [...prev, { role: 'ai', text: 'Sorry, I had trouble responding. Please try again.' }]);
+      const detail = err.response?.data?.message || 'Please try again in a moment.';
+      setMessages((prev) => [...prev, { role: 'ai', text: `⚠️ Sorry, I couldn't respond. ${detail}` }]);
     } finally {
       setLoading(false);
     }

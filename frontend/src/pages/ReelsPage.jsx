@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Share2, Download, MoreHorizontal, Eye, Bell, Search as SearchIcon } from 'lucide-react';
 import { postAPI, followAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
-export default function ReelsPage() {
+export default function ReelsPage({ onNotifications, onSearch }) {
+  const { user: currentUser } = useAuth();
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState(0);
   const [videoErrors, setVideoErrors] = useState({});
+  const [sharedId, setSharedId] = useState(null);
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -38,6 +41,27 @@ export default function ReelsPage() {
     } catch (err) {
       console.error('Failed to like', err);
     }
+  };
+
+  const handleFollow = async (userId, postId) => {
+    if (!userId || userId === currentUser?.id) return;
+    try {
+      const res = await followAPI.follow(userId);
+      const following = res.data.data.following;
+      setReels((prev) => prev.map((r) => (r.id === postId ? { ...r, _following: following } : r)));
+    } catch (err) {
+      console.error('Failed to follow', err);
+    }
+  };
+
+  const handleShare = async (reel) => {
+    const url = `${window.location.origin}/?post=${reel.id}`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'RA Social reel', text: reel.content || 'Check this reel', url });
+      else { await navigator.clipboard.writeText(url); }
+      setSharedId(reel.id);
+      setTimeout(() => setSharedId(null), 1500);
+    } catch {}
   };
 
   const handleScroll = () => {
@@ -84,8 +108,8 @@ export default function ReelsPage() {
               <span className="text-pink-400">▶</span> RA Social
             </span>
             <div className="flex items-center gap-4">
-              <SearchIcon className="w-5 h-5" />
-              <Bell className="w-5 h-5" />
+              <button onClick={onSearch} aria-label="Search"><SearchIcon className="w-5 h-5" /></button>
+              <button onClick={onNotifications} aria-label="Notifications"><Bell className="w-5 h-5" /></button>
             </div>
           </div>
 
@@ -103,8 +127,8 @@ export default function ReelsPage() {
               <span className="text-xs">{reel.commentsCount || 0}</span>
             </div>
             <div className="flex flex-col items-center gap-1">
-              <Share2 className="w-6 h-6" />
-              <span className="text-xs">Share</span>
+              <button onClick={() => handleShare(reel)}><Share2 className="w-6 h-6" /></button>
+              <span className="text-xs">{sharedId === reel.id ? 'Copied!' : 'Share'}</span>
             </div>
             <div className="flex flex-col items-center gap-1">
               <Download className="w-6 h-6" />
@@ -119,7 +143,11 @@ export default function ReelsPage() {
                 {(reel.user?.fullName?.[0] || reel.user?.username?.[0] || 'U').toUpperCase()}
               </div>
               <span className="font-semibold text-sm">{reel.user?.fullName || reel.user?.username}</span>
-              <button className="px-3 py-1 bg-blue-500 rounded-full text-xs font-semibold">Follow</button>
+              {reel.user?.id !== currentUser?.id && (
+                <button onClick={() => handleFollow(reel.user?.id, reel.id)} className="px-3 py-1 bg-blue-500 rounded-full text-xs font-semibold">
+                  {reel._following ? 'Following' : 'Follow'}
+                </button>
+              )}
             </div>
             <p className="text-sm">{reel.content}</p>
             {reel.hashtags?.length > 0 && (

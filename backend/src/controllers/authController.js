@@ -102,12 +102,15 @@ export const getMe = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { fullName, bio } = req.body;
+    const { fullName, bio, avatarUrl } = req.body;
     const userId = req.userId;
+
+    const data = { fullName, bio };
+    if (avatarUrl) data.avatarUrl = avatarUrl;
 
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { fullName, bio },
+      data,
       select: { id: true, username: true, fullName: true, bio: true, avatarUrl: true }
     });
 

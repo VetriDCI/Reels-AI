@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Calendar, Briefcase, Wallet, Folder, Shield, Eye, Bell,
-  Palette, HelpCircle, LogOut, ChevronRight, Film, Users2, DollarSign
+  Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -33,7 +33,7 @@ const menuItems = [
   { key: 'help', label: 'Help & Support', icon: HelpCircle, color: 'from-purple-400 to-pink-400' },
 ];
 
-export default function MePage({ onLogout }) {
+export default function MePage({ onLogout, onBack }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('main');
@@ -87,11 +87,20 @@ export default function MePage({ onLogout }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 to-blue-50 pb-24">
-      <div className="bg-gradient-to-r from-pink-500 to-blue-500 px-4 pt-6 pb-8 text-white">
+      <div className="relative bg-gradient-to-r from-pink-500 to-blue-500 px-4 pt-6 pb-8 text-white">
         <h1 className="text-lg font-bold text-center mb-4">RA Social Studio</h1>
+        {onBack && (
+          <button onClick={onBack} className="absolute top-6 left-4 text-white">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+        )}
         <div className="flex flex-col items-center">
-          <div className="w-20 h-20 rounded-full bg-white/20 border-4 border-white flex items-center justify-center text-2xl font-bold mb-2">
-            {(user?.fullName?.[0] || user?.username?.[0] || 'U').toUpperCase()}
+          <div className="w-20 h-20 rounded-full bg-white/20 border-4 border-white flex items-center justify-center text-2xl font-bold mb-2 overflow-hidden">
+            {user?.avatarUrl ? (
+              <img src={user.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              (user?.fullName?.[0] || user?.username?.[0] || 'U').toUpperCase()
+            )}
           </div>
           <p className="font-bold text-lg">{user?.fullName || user?.username}</p>
           <p className="text-sm opacity-80">@{user?.username} · Creator</p>
