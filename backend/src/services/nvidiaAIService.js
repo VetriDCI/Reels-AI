@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const MODEL = 'meta/llama-3.1-70b-instruct';
+const MODEL = 'meta/llama-2-70b-chat';
 
 class NvidiaAIService {
   constructor() {
@@ -164,7 +164,7 @@ class NvidiaAIService {
         messages: [
           {
             role: 'system',
-            content: "You are RA Social's friendly AI assistant. Help users with questions about the app, give tips for social media, and be conversational. Keep responses under 200 characters."
+            content: "You are RA Social's friendly AI assistant. Help users with questions about the app, give tips for social media, and be conversational. Keep responses under 200 characters. Support Tamil and English."
           },
           {
             role: 'user',
