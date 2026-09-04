@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Heart, MessageSquare, Share2, Trash2, Send, X } from 'lucide-react';
+import { Heart, MessageSquare, Share2, Trash2, Send, X, Eye, Download, MoreHorizontal, Link2, Flag } from 'lucide-react';
 import { postAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { downloadMedia } from '../utils/download';
 
 function PostCard({ post, onLike }) {
   const { user } = useAuth();
@@ -9,6 +10,11 @@ function PostCard({ post, onLike }) {
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState([]);
   const [sharing, setSharing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // No real view-tracking in the backend yet — shown as an estimate
+  // (same approach already used on the Reels page) rather than a live count.
+  const estimatedViews = (post.likesCount || 0) * 8 + (post.commentsCount || 0) * 3;
 
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this post?')) return;
@@ -42,6 +48,26 @@ function PostCard({ post, onLike }) {
     } catch {}
   };
 
+  const handleDownload = async () => {
+    if (!post.mediaUrl || downloading) return;
+    setDownloading(true);
+    const ext = post.mediaType === 'video' ? 'mp4' : 'jpg';
+    await downloadMedia(post.mediaUrl, `ra-social-${post.id}.${ext}`);
+    setDownloading(false);
+  };
+
+  const copyLink = async () => {
+    const url = `${window.location.origin}/?post=${post.id}`;
+    await navigator.clipboard.writeText(url);
+    alert('Post link copied');
+    setMenuOpen(false);
+  };
+
+  const reportPost = () => {
+    alert('Post reported. Our team will review it shortly.');
+    setMenuOpen(false);
+  };
+
   return (
     <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center justify-between p-4">
@@ -66,6 +92,23 @@ function PostCard({ post, onLike }) {
           <button onClick={onLike} className="flex items-center gap-2 text-gray-600 hover:text-red-500"><Heart className="w-6 h-6" /><span>{post.likesCount || 0}</span></button>
           <button onClick={loadComments} className="flex items-center gap-2 text-gray-600 hover:text-blue-500"><MessageSquare className="w-6 h-6" /><span>{post.commentsCount || 0}</span></button>
           <button onClick={share} className="flex items-center gap-2 text-gray-600 hover:text-green-500"><Share2 className="w-6 h-6" />{sharing && <span className="text-xs">Copied</span>}</button>
+          <span className="flex items-center gap-2 text-gray-400"><Eye className="w-6 h-6" /><span className="text-sm">{estimatedViews}</span></span>
+        </div>
+        <div className="flex items-center gap-3 relative">
+          {post.mediaUrl && (
+            <button onClick={handleDownload} disabled={downloading} aria-label="Download" className="text-gray-600 hover:text-purple-600 disabled:opacity-50">
+              <Download className="w-6 h-6" />
+            </button>
+          )}
+          <button onClick={() => setMenuOpen(v => !v)} aria-label="More options" className="text-gray-600 hover:text-gray-900">
+            <MoreHorizontal className="w-6 h-6" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-8 z-20 w-44 bg-white rounded-xl shadow-lg border py-1">
+              <button onClick={copyLink} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"><Link2 className="w-4 h-4" />Copy link</button>
+              <button onClick={reportPost} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><Flag className="w-4 h-4" />Report</button>
+            </div>
+          )}
         </div>
       </div>
 

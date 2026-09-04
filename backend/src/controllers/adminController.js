@@ -65,16 +65,21 @@ export const adminForgotPassword = async (req, res) => {
 // GET /api/admin/stats
 export const getAdminStats = async (req, res) => {
   try {
-    const [totalUsers, totalPosts, totalReels, activeUsers] = await Promise.all([
+    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, likesCount] = await Promise.all([
       prisma.user.count(),
       prisma.post.count(),
       prisma.post.count({ where: { mediaType: 'video' } }),
       prisma.user.count({ where: { status: 'active' } }),
+      prisma.user.aggregate({ _sum: { earnings: true } }),
+      prisma.like.count(),
     ]);
 
     // Payouts and content-reporting features aren't built yet (no Payout or
     // Report models exist in the schema), so these stay at 0 until those
     // features are added rather than showing fabricated numbers.
+    // totalViews isn't tracked yet either — estimated from likes (same
+    // approximation the app already uses on the Reels/Home feed) so the
+    // dashboard has a real number instead of crashing on a missing field.
     res.json({
       totalUsers,
       totalPosts,
@@ -82,6 +87,8 @@ export const getAdminStats = async (req, res) => {
       pendingPayouts: 0,
       activeUsers,
       reportedContent: 0,
+      totalEarnings: earningsAgg._sum.earnings || 0,
+      totalViews: likesCount * 8,
     });
   } catch (error) {
     console.error('Admin stats error:', error);

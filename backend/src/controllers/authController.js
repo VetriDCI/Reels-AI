@@ -81,9 +81,8 @@ export const getMe = async (req, res) => {
       select: {
         id: true, username: true, email: true, fullName: true, bio: true, avatarUrl: true, earnings: true, createdAt: true,
         posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 9 },
-        followers: { select: { followerId: true } },
-following: { select: { followingId: true } }
-               
+        followers: { select: { id: true } },
+        following: { select: { id: true } }
       }
     });
 

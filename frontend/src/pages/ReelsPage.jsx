@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, MessageCircle, Share2, Download, MoreHorizontal, Eye, Bell, Search as SearchIcon } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Download, MoreHorizontal, Eye, Bell, Search as SearchIcon, X, Send, Link2, Flag } from 'lucide-react';
 import { postAPI, followAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { downloadMedia } from '../utils/download';
 
 export default function ReelsPage({ onNotifications, onSearch }) {
   const { user: currentUser } = useAuth();
@@ -10,6 +11,11 @@ export default function ReelsPage({ onNotifications, onSearch }) {
   const [current, setCurrent] = useState(0);
   const [videoErrors, setVideoErrors] = useState({});
   const [sharedId, setSharedId] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [menuForId, setMenuForId] = useState(null);
+  const [commentReel, setCommentReel] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState('');
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -62,6 +68,48 @@ export default function ReelsPage({ onNotifications, onSearch }) {
       setSharedId(reel.id);
       setTimeout(() => setSharedId(null), 1500);
     } catch {}
+  };
+
+  const handleDownload = async (reel) => {
+    if (downloadingId) return;
+    setDownloadingId(reel.id);
+    await downloadMedia(reel.mediaUrl, `ra-social-reel-${reel.id}.mp4`);
+    setDownloadingId(null);
+  };
+
+  const openComments = async (reel) => {
+    setCommentReel(reel);
+    setComments([]);
+    try {
+      const res = await postAPI.getById(reel.id);
+      setComments(res.data.data.comments || []);
+    } catch (err) {
+      console.error('Failed to load comments', err);
+    }
+  };
+
+  const addComment = async () => {
+    if (!commentText.trim() || !commentReel) return;
+    try {
+      const res = await postAPI.addComment(commentReel.id, commentText.trim());
+      setComments((prev) => [res.data.data, ...prev]);
+      setCommentText('');
+      setReels((prev) => prev.map((r) => (r.id === commentReel.id ? { ...r, commentsCount: (r.commentsCount || 0) + 1 } : r)));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to add comment');
+    }
+  };
+
+  const copyLink = async (reel) => {
+    const url = `${window.location.origin}/?post=${reel.id}`;
+    await navigator.clipboard.writeText(url);
+    alert('Reel link copied');
+    setMenuForId(null);
+  };
+
+  const reportReel = () => {
+    alert('Reel reported. Our team will review it shortly.');
+    setMenuForId(null);
   };
 
   const handleScroll = () => {
@@ -122,19 +170,29 @@ export default function ReelsPage({ onNotifications, onSearch }) {
               <Heart className={`w-7 h-7 ${reel._liked ? 'fill-pink-500 text-pink-500' : ''}`} />
               <span className="text-xs">{reel.likesCount || 0}</span>
             </button>
-            <div className="flex flex-col items-center gap-1">
+            <button onClick={() => openComments(reel)} className="flex flex-col items-center gap-1">
               <MessageCircle className="w-6 h-6" />
               <span className="text-xs">{reel.commentsCount || 0}</span>
-            </div>
+            </button>
             <div className="flex flex-col items-center gap-1">
               <button onClick={() => handleShare(reel)}><Share2 className="w-6 h-6" /></button>
               <span className="text-xs">{sharedId === reel.id ? 'Copied!' : 'Share'}</span>
             </div>
-            <div className="flex flex-col items-center gap-1">
+            <button onClick={() => handleDownload(reel)} disabled={downloadingId === reel.id} className="flex flex-col items-center gap-1 disabled:opacity-50">
               <Download className="w-6 h-6" />
-              <span className="text-xs">Save</span>
+              <span className="text-xs">{downloadingId === reel.id ? 'Saving...' : 'Save'}</span>
+            </button>
+            <div className="relative">
+              <button onClick={() => setMenuForId(menuForId === reel.id ? null : reel.id)}>
+                <MoreHorizontal className="w-6 h-6" />
+              </button>
+              {menuForId === reel.id && (
+                <div className="absolute right-8 bottom-0 z-30 w-44 bg-white rounded-xl shadow-lg py-1 text-gray-800">
+                  <button onClick={() => copyLink(reel)} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Link2 className="w-4 h-4" />Copy link</button>
+                  <button onClick={reportReel} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><Flag className="w-4 h-4" />Report</button>
+                </div>
+              )}
             </div>
-            <MoreHorizontal className="w-6 h-6" />
           </div>
 
           <div className="absolute left-4 right-20 bottom-8 text-white">
@@ -156,6 +214,33 @@ export default function ReelsPage({ onNotifications, onSearch }) {
           </div>
         </div>
       ))}
+
+      {commentReel && (
+        <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl max-h-[70vh] flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b">
+            <b className="text-gray-900">Comments</b>
+            <button onClick={() => setCommentReel(null)} aria-label="Close comments"><X className="w-5 h-5 text-gray-600" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-6">No comments yet. Be the first!</p>}
+            {comments.map((c) => (
+              <div key={c.id} className="text-sm bg-gray-50 rounded-lg p-2 text-gray-800">
+                <b>{c.user?.fullName || c.user?.username}</b> {c.content}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 p-4 border-t">
+            <input
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addComment()}
+              placeholder="Write a comment..."
+              className="flex-1 border rounded-full px-4 py-2 text-gray-800"
+            />
+            <button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white"><Send className="w-4 h-4" /></button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

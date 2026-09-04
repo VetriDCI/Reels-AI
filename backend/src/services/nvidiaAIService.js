@@ -1,11 +1,11 @@
 import axios from 'axios';
 
-const MODEL = process.env.NVIDIA_MODEL || 'meta/llama3-8b-instruct';
+const MODEL = 'meta/llama-3.1-8b-instruct';
 
 class NvidiaAIService {
   constructor() {
     this.apiKey = process.env.NVIDIA_API_KEY;
-    this.baseURL = process.env.NVIDIA_BASE_URL;
+    this.baseURL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 
     this.client = axios.create({
       baseURL: this.baseURL,
@@ -41,7 +41,7 @@ class NvidiaAIService {
     if (keyError) return { success: false, error: keyError };
 
     try {
-      const response = await this.client.post('', {
+      const response = await this.client.post('/chat/completions', {
         model: MODEL,
         messages: [
           {
@@ -70,7 +70,7 @@ class NvidiaAIService {
     if (keyError) return { success: false, error: keyError };
 
     try {
-      const response = await this.client.post('', {
+      const response = await this.client.post('/chat/completions', {
         model: MODEL,
         messages: [
           {
@@ -104,7 +104,7 @@ class NvidiaAIService {
     try {
       const languages = { ta: 'Tamil', hi: 'Hindi', en: 'English', es: 'Spanish', fr: 'French' };
 
-      const response = await this.client.post('', {
+      const response = await this.client.post('/chat/completions', {
         model: MODEL,
         messages: [
           {
@@ -130,7 +130,7 @@ class NvidiaAIService {
     if (keyError) return { success: false, isSafe: true, error: keyError };
 
     try {
-      const response = await this.client.post('', {
+      const response = await this.client.post('/chat/completions', {
         model: MODEL,
         messages: [
           {
@@ -159,7 +159,7 @@ class NvidiaAIService {
     if (keyError) return { success: false, error: keyError };
 
     try {
-      const response = await this.client.post('', {
+      const response = await this.client.post('/chat/completions', {
         model: MODEL,
         messages: [
           {

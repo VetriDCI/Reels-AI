@@ -49,7 +49,12 @@ export const createChat = async (req, res) => {
     const userId = req.userId;
 
     const existingChat = await prisma.chat.findFirst({
-      where: { participants: { every: { id: { in: [userId, participantId] } } } },
+      where: {
+        AND: [
+          { participants: { some: { id: userId } } },
+          { participants: { some: { id: participantId } } }
+        ]
+      },
       include: { participants: true }
     });
 
