@@ -12,11 +12,17 @@ export const register = async (req, res) => {
     }
 
     const existingUser = await prisma.user.findFirst({
-      where: { OR: [{ email }, { username }, ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])] }
+      where: { OR: [{ email }, { username }, ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])] },
+      select: { id: true, email: true, username: true, phoneNumber: true }
     });
 
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User already exists with this email or username' });
+      const duplicateField = existingUser.email === email
+        ? 'email'
+        : existingUser.username === username
+          ? 'username'
+          : 'phone number';
+      return res.status(409).json({ success: false, message: `An account already exists with this ${duplicateField}` });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -108,7 +114,19 @@ export const updateProfile = async (req, res) => {
 
     const data = { fullName, bio };
     if (avatarUrl) data.avatarUrl = avatarUrl;
-    if (phoneNumber !== undefined) data.phoneNumber = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
+    if (phoneNumber !== undefined) {
+      const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
+      if (normalizedPhone) {
+        const duplicate = await prisma.user.findFirst({
+          where: { phoneNumber: normalizedPhone, NOT: { id: userId } },
+          select: { id: true }
+        });
+        if (duplicate) {
+          return res.status(409).json({ success: false, message: 'This phone number is already linked to another account' });
+        }
+      }
+      data.phoneNumber = normalizedPhone;
+    }
 
     const user = await prisma.user.update({
       where: { id: userId },

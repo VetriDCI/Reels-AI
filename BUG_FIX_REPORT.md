@@ -1,21 +1,22 @@
-# RA Social — Bug & Glitch Fix Report
+# Reels AI – Final Bug Fix Report
 
-Inspected the supplied `Reels-AI-FINAL-UPDATED.zip` source.
+## Render deployment fix
 
-## Fixed
-- Fixed LIVE camera lifecycle bug: selecting/replacing media no longer stops the live camera unexpectedly.
-- Added a backend media-download endpoint and wired post/reel download buttons to it as a reliable fallback when direct Cloudinary/browser download is blocked.
-- Fixed chat message delivery: REST-created messages are now emitted through Socket.IO so the other participant can receive them live.
-- Removed duplicate sender-side message refresh that could cause stale/duplicate UI behavior.
-- Fixed chat message authorization: users can only read messages from chats they participate in.
-- Chat `updatedAt` is refreshed when a message is sent, keeping chat ordering correct.
-- Normalized and deduplicated hashtags before saving, preventing duplicate hashtag relation errors and inconsistent `#` formatting.
+Fixed the deployment failure shown in Render logs:
 
-## Verified
-- Backend JavaScript syntax checked successfully for modified server/controller/route files.
-- Existing search, comments, post action row, Reels navigation, local media picker, LIVE button, media preview/editor, and upload/publishing overlay were inspected and retained.
+`A unique constraint covering the columns [phoneNumber] on the table User will be added. If there are existing duplicate values, this will fail.`
 
-## Deployment note
-- Frontend production build could not be completed in this environment because the supplied archive did not contain a usable Vite binary in `node_modules`, and dependency installation timed out. This is an environment/dependency-install limitation, not a confirmed source syntax error.
-- Run `npm ci && npm run build` in `frontend` before deployment.
-- Run `npm ci` in `backend`; startup continues to run Prisma schema sync as configured.
+### What changed
+- Added `backend/src/preflight.js`.
+- Before `prisma db push`, the preflight checks whether `User.phoneNumber` exists.
+- If duplicate non-null phone numbers already exist, the oldest account keeps the number and later duplicate values are set to `NULL`.
+- No user rows are deleted.
+- Prisma can then safely create the `phoneNumber` unique constraint.
+- Registration now returns a clear `409` when email, username, or phone number is already in use.
+- Profile phone-number updates also check for duplicates and return `409` instead of a generic server error.
+- Render/backend start command now runs `prisma generate` -> preflight -> `prisma db push` -> server.
+
+## Validation
+- Backend JavaScript syntax checks: passed.
+- Backend/admin/frontend package JSON parsing: passed.
+- No `--accept-data-loss` flag was added; the duplicate-phone conflict is handled explicitly instead.
