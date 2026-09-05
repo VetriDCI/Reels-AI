@@ -28,6 +28,12 @@ function AppContent() {
   const [posts, setPosts] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [feedRefresh, setFeedRefresh] = useState(0);
+  const [reelTarget, setReelTarget] = useState(null);
+
+  const openReel = (post) => {
+    setReelTarget(post);
+    setActiveTab('reels');
+  };
 
   useEffect(() => {
     try {
@@ -60,10 +66,11 @@ function AppContent() {
   }
 
   const isFullScreenTab = activeTab === 'reels' || activeTab === 'me';
+  const hideTopBar = isFullScreenTab || activeTab === 'search';
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {!isFullScreenTab && (
+      {!hideTopBar && (
         <TopBar
           logout={logout}
           onNotifications={() => setActiveTab('notifications')}
@@ -73,8 +80,8 @@ function AppContent() {
       )}
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
-        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} />}
-        {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} onSearch={() => setActiveTab('search')} />}
+        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} />}
+        {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} onSearch={() => setActiveTab('search')} initialPostId={reelTarget?.id} />}
         {activeTab === 'ai' && <AIChatFeature />}
         {activeTab === 'chat' && <ChatPage />}
         {activeTab === 'me' && <MePage onLogout={logout} onBack={() => setActiveTab('home')} />}
@@ -167,7 +174,7 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTa
   );
 }
 
-function HomeFeed({ posts, setPosts, refreshKey }) {
+function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
   const fetchPosts = async () => {
     try {
       const response = await postAPI.getFeed();
@@ -198,7 +205,7 @@ function HomeFeed({ posts, setPosts, refreshKey }) {
         </div>
       ) : (
         posts.map((post) => (
-          <PostCard key={post.id} post={post} onLike={() => handleLike(post.id)} />
+          <PostCard key={post.id} post={post} onLike={() => handleLike(post.id)} onOpenReel={onOpenReel} />
         ))
       )}
     </div>

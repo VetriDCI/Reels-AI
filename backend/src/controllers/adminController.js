@@ -133,12 +133,15 @@ export const getAdminUsers = async (req, res) => {
   }
 };
 
-// GET /api/admin/posts?limit=20
+// GET /api/admin/posts?limit=20&status=pending
 export const getAdminPosts = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
+    const { status } = req.query;
+    const where = status && status !== 'all' ? { status } : {};
 
     const posts = await prisma.post.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {
@@ -156,6 +159,7 @@ export const getAdminPosts = async (req, res) => {
       author: p.user?.fullName || p.user?.username || 'Unknown',
       likes_count: p.likes.length,
       comments_count: p.comments.length,
+      status: p.status,
       created_at: p.createdAt,
     }));
 
@@ -163,6 +167,29 @@ export const getAdminPosts = async (req, res) => {
   } catch (error) {
     console.error('Admin posts error:', error);
     res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+};
+
+// PATCH /api/admin/posts/:id/status
+export const updatePostStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['approved', 'pending', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be "approved", "pending" or "rejected"' });
+    }
+
+    const post = await prisma.post.update({
+      where: { id },
+      data: { status },
+      select: { id: true, status: true },
+    });
+
+    res.json(post);
+  } catch (error) {
+    console.error('Update post status error:', error);
+    res.status(500).json({ error: 'Failed to update post status' });
   }
 };
 

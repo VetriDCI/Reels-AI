@@ -4,7 +4,7 @@ import { postAPI, followAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
 
-export default function ReelsPage({ onNotifications, onSearch }) {
+export default function ReelsPage({ onNotifications, onSearch, initialPostId }) {
   const { user: currentUser } = useAuth();
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,10 +17,21 @@ export default function ReelsPage({ onNotifications, onSearch }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const containerRef = useRef(null);
+  const itemRefs = useRef({});
 
   useEffect(() => {
     loadReels();
   }, []);
+
+  // Jump straight to the video that was tapped on the Home feed, once
+  // the reels list (and that video's own DOM node) is ready.
+  useEffect(() => {
+    if (!initialPostId || reels.length === 0) return;
+    const idx = reels.findIndex((r) => r.id === initialPostId);
+    if (idx === -1) return;
+    setCurrent(idx);
+    itemRefs.current[initialPostId]?.scrollIntoView({ behavior: 'instant', block: 'start' });
+  }, [initialPostId, reels]);
 
   const loadReels = async () => {
     try {
@@ -138,7 +149,7 @@ export default function ReelsPage({ onNotifications, onSearch }) {
       className="h-screen w-full bg-black overflow-y-scroll snap-y snap-mandatory"
     >
       {reels.map((reel, i) => (
-        <div key={reel.id} className="relative h-screen w-full snap-start flex items-center justify-center bg-black">
+        <div key={reel.id} ref={(el) => { itemRefs.current[reel.id] = el; }} className="relative h-screen w-full snap-start flex items-center justify-center bg-black">
           <video
             src={reel.mediaUrl}
             className="h-full w-full object-cover"

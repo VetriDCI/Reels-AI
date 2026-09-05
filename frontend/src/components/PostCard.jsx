@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Heart, MessageSquare, Share2, Trash2, Send, X, Eye, Download, MoreHorizontal, Link2, Flag } from 'lucide-react';
-import { postAPI } from '../services/api';
+import { Heart, MessageSquare, Share2, Trash2, Send, X, Eye, Download, MoreHorizontal, Link2, Flag, Play } from 'lucide-react';
+import { postAPI, followAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
 
-function PostCard({ post, onLike }) {
+function PostCard({ post, onLike, onOpenReel }) {
   const { user } = useAuth();
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState('');
@@ -12,9 +12,20 @@ function PostCard({ post, onLike }) {
   const [sharing, setSharing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [following, setFollowing] = useState(false);
   // No real view-tracking in the backend yet — shown as an estimate
   // (same approach already used on the Reels page) rather than a live count.
   const estimatedViews = (post.likesCount || 0) * 8 + (post.commentsCount || 0) * 3;
+
+  const handleFollow = async () => {
+    if (!post.user?.id || post.user.id === user?.id) return;
+    try {
+      const res = await followAPI.follow(post.user.id);
+      setFollowing(res.data.data.following);
+    } catch (err) {
+      console.error('Failed to follow', err);
+    }
+  };
 
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this post?')) return;
@@ -73,7 +84,18 @@ function PostCard({ post, onLike }) {
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center space-x-3">
           <img src={post.user?.avatarUrl || `https://i.pravatar.cc/150?u=${post.user?.id}`} alt="" className="w-10 h-10 rounded-full object-cover" />
-          <div><h3 className="font-semibold text-gray-900">{post.user?.fullName || post.user?.username}</h3><p className="text-sm text-gray-500">@{post.user?.username}</p></div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-gray-900">{post.user?.fullName || post.user?.username}</h3>
+              {post.user?.id !== user?.id && (
+                <button onClick={handleFollow} className={`px-3 py-0.5 rounded-full text-xs font-semibold ${following ? 'bg-gray-100 text-gray-600' : 'bg-purple-600 text-white'}`}>
+                  {following ? 'Joined' : 'Join'}
+                </button>
+              )}
+              <span className="flex items-center gap-1 text-xs text-gray-400"><Eye className="w-3.5 h-3.5" />{estimatedViews}</span>
+            </div>
+            <p className="text-sm text-gray-500">@{post.user?.username}</p>
+          </div>
         </div>
         {user?.id === post.user?.id && <button onClick={handleDelete} className="p-2 hover:bg-red-50 rounded-full text-gray-500 hover:text-red-600"><Trash2 className="w-5 h-5" /></button>}
       </div>
@@ -83,8 +105,23 @@ function PostCard({ post, onLike }) {
       </div>}
 
       {post.mediaUrl && <div className="px-4 pb-3">
-        {post.mediaType === 'video' ? <video src={post.mediaUrl} controls playsInline preload="metadata" className="w-full max-h-[70vh] rounded-lg bg-black" /> :
-          <img src={post.mediaUrl} alt="Post media" loading="lazy" className="w-full max-h-[70vh] object-contain rounded-lg bg-gray-100" onError={e => {e.currentTarget.alt='Media unavailable';}} />}
+        {post.mediaType === 'video' ? (
+          <button
+            type="button"
+            onClick={() => onOpenReel?.(post)}
+            className="relative w-full max-h-[70vh] rounded-lg bg-black overflow-hidden block"
+            aria-label="Play in Reels"
+          >
+            <video src={post.mediaUrl} playsInline preload="metadata" muted className="w-full max-h-[70vh] object-contain bg-black pointer-events-none" />
+            <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+              <span className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center">
+                <Play className="w-8 h-8 text-gray-900 ml-1" fill="currentColor" />
+              </span>
+            </span>
+          </button>
+        ) : (
+          <img src={post.mediaUrl} alt="Post media" loading="lazy" className="w-full max-h-[70vh] object-contain rounded-lg bg-gray-100" onError={e => {e.currentTarget.alt='Media unavailable';}} />
+        )}
       </div>}
 
       <div className="flex items-center justify-between px-4 py-3 border-t">

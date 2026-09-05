@@ -41,6 +41,7 @@ model Post {
   content     String?
   mediaUrl    String?
   mediaType   String?
+  status      String   @default("approved")
   likes       Like[]
   comments    Comment[]
   notifications Notification[]

@@ -11,17 +11,38 @@ export function AuthProvider({ children }) {
     checkAuth();
   }, []);
 
-  const checkAuth = async () => {
+  const checkAuth = async (isRetry = false) => {
     const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const response = await authAPI.getMe();
-        setUser(response.data.data);
-      } catch (error) {
-        localStorage.removeItem('token');
-      }
+    if (!token) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    try {
+      const response = await authAPI.getMe();
+      setUser(response.data.data);
+      setLoading(false);
+    } catch (error) {
+      const status = error.response?.status;
+      if (status === 401 || status === 403) {
+        // Token really is invalid/expired — this is the only case that
+        // should force a re-login.
+        localStorage.removeItem('token');
+        setLoading(false);
+        return;
+      }
+      // Network error, timeout, or a 5xx (e.g. the backend is still waking
+      // up from a Render free-tier cold start). The token is still fine —
+      // retry once after a short delay instead of logging the user out.
+      if (!isRetry) {
+        setTimeout(() => checkAuth(true), 3000);
+        return;
+      }
+      // Second attempt also failed for a non-auth reason: keep the token
+      // (so the next reload can succeed once the backend is up) and just
+      // stop the spinner. The user stays logged out for this page load
+      // only, not permanently.
+      setLoading(false);
+    }
   };
 
   const login = async (email, password) => {

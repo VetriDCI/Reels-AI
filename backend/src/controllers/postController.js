@@ -39,6 +39,7 @@ export const getFeed = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const posts = await prisma.post.findMany({
+      where: { status: { not: 'rejected' } },
       include: {
         user: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
         likes: { select: { id: true } },
