@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "npx prisma generate && node src/preflight.js && npx prisma db push && node src/server.js",
+    "start": "prisma generate && prisma db push && node src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "build": "prisma generate && prisma db push"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

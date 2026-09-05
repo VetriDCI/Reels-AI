@@ -11,7 +11,7 @@ model User {
   id            String    @id @default(uuid())
   username      String    @unique
   email         String    @unique
-  phoneNumber   String?   @unique
+  phoneNumber   String?
   passwordHash  String
   fullName      String?
   bio           String?   @default("")
@@ -34,6 +34,7 @@ model User {
 
   @@index([username])
   @@index([email])
+  @@index([phoneNumber])
 }
 
 model Post {
