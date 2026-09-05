@@ -11,19 +11,20 @@ export const search = async (req, res) => {
     const results = {};
 
     if (type === 'all' || type === 'users') {
+      const phoneDigits = String(query).replace(/\D/g, '');
+      const userOr = [
+        { username: { contains: query, mode: 'insensitive' } },
+        { fullName: { contains: query, mode: 'insensitive' } }
+      ];
+      if (phoneDigits.length >= 5) userOr.push({ phoneNumber: { contains: phoneDigits } });
+
       const users = await prisma.user.findMany({
-        where: {
-          OR: [
-            { username: { contains: query, mode: 'insensitive' } },
-            { fullName: { contains: query, mode: 'insensitive' } }
-          ]
-        },
+        where: { OR: userOr },
         select: { id: true, username: true, fullName: true, avatarUrl: true, bio: true },
         take: 10
       });
       results.users = users;
     }
-
     if (type === 'all' || type === 'posts') {
       const posts = await prisma.post.findMany({
         where: { content: { contains: query, mode: 'insensitive' } },

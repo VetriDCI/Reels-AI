@@ -17,6 +17,8 @@ function ChatPage() {
   const [userQuery, setUserQuery] = useState('');
   const [userResults, setUserResults] = useState([]);
   const [inviteNumber, setInviteNumber] = useState('');
+  const [phoneQuery, setPhoneQuery] = useState('');
+  const [phoneSearching, setPhoneSearching] = useState(false);
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
   const selectedChatRef = useRef(null);
@@ -84,9 +86,7 @@ function ChatPage() {
     if (!newMessage.trim() || !selectedChat) return;
 
     try {
-      await api.post(`/chats/${selectedChat.id}/messages`, { content: newMessage });
-      const response = await api.get(`/chats/${selectedChat.id}/messages`);
-      setMessages(response.data.data);
+      await api.post(`/chats/${selectedChat.id}/messages`, { content: newMessage.trim() });
       setNewMessage('');
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -94,7 +94,7 @@ function ChatPage() {
   };
 
   const getOtherParticipant = (chat) => {
-    return chat.participants.find(p => p.id !== chat.currentUserId);
+    return chat.participants.find(p => p.id !== user?.id) || chat.participants[0];
   };
 
   const runUserSearch = async (q) => {
@@ -106,6 +106,26 @@ function ChatPage() {
     } catch (err) {
       console.error('User search failed', err);
     }
+  };
+
+  const searchByPhone = async () => {
+    const q = phoneQuery.trim();
+    if (!q) return;
+    setPhoneSearching(true);
+    try {
+      const res = await searchAPI.search(q, 'users');
+      const users = (res.data.data?.users || []).filter(u => u.id !== user?.id);
+      if (users.length > 0) {
+        await startChatWith(users[0]);
+        setPhoneQuery('');
+      } else {
+        setInviteNumber(q);
+        alert('No RA Social account found for this mobile number. You can invite them below.');
+      }
+    } catch (err) {
+      console.error('Phone search failed', err);
+      alert('Could not search this mobile number.');
+    } finally { setPhoneSearching(false); }
   };
 
   const startChatWith = async (otherUser) => {
@@ -185,7 +205,7 @@ function ChatPage() {
               <img src={getOtherParticipant(selectedChat)?.avatarUrl || 'https://i.pravatar.cc/150'} alt="User" className="w-10 h-10 rounded-full" />
               <div>
                 <h3 className="font-semibold">{getOtherParticipant(selectedChat)?.fullName || getOtherParticipant(selectedChat)?.username}</h3>
-                <p className="text-xs text-green-500">🔒 End-to-End Encrypted</p>
+                <p className="text-xs text-green-600">● Private chat</p>
               </div>
             </div>
 
@@ -244,13 +264,26 @@ function ChatPage() {
 
             <div className="p-4 space-y-4">
               <div>
-                <p className="text-sm font-medium text-gray-700 mb-2">Chat with someone on RA Social</p>
+                <p className="text-sm font-medium text-gray-700 mb-2">Chat with an RA Social user</p>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    value={phoneQuery}
+                    onChange={e => setPhoneQuery(e.target.value.replace(/[^0-9+() -]/g, ''))}
+                    onKeyDown={e => e.key === 'Enter' && searchByPhone()}
+                    placeholder="Mobile number (+91...)"
+                    inputMode="tel"
+                    className="flex-1 px-4 py-2 bg-gray-100 rounded-full text-sm focus:outline-none"
+                  />
+                  <button onClick={searchByPhone} disabled={phoneSearching || !phoneQuery.trim()} className="px-4 py-2 bg-green-500 text-white rounded-full text-sm font-semibold disabled:opacity-50">
+                    {phoneSearching ? '...' : 'Chat'}
+                  </button>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     value={userQuery}
-                    onChange={(e) => runUserSearch(e.target.value)}
-                    placeholder="Search by username or name..."
+                    onChange={e => runUserSearch(e.target.value)}
+                    placeholder="Or search by username or name..."
                     className="w-full pl-9 pr-3 py-2 bg-gray-100 rounded-full text-sm focus:outline-none"
                   />
                 </div>
@@ -275,7 +308,7 @@ function ChatPage() {
                   <MessageCircle className="w-4 h-4" /> Invite someone who isn't on RA Social
                 </p>
                 <p className="text-xs text-gray-500 mb-3">
-                  We can't message someone directly by phone number — they need an RA Social account first. Send them an invite link instead:
+                  If the number belongs to an RA Social account, Chat above opens a private conversation. If not, send an invite link so they can join first:
                 </p>
                 <input
                   value={inviteNumber}

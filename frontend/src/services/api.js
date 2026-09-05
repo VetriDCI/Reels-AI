@@ -40,7 +40,9 @@ export const postAPI = {
   getById: (id) => api.get(`/posts/${id}`),
   delete: (id) => api.delete(`/posts/${id}`),
   like: (id) => api.post(`/posts/${id}/like`),
-  addComment: (id, content) => api.post(`/posts/${id}/comments`, { content })
+  addComment: (id, content) => api.post(`/posts/${id}/comments`, { content }),
+  view: (id) => api.post(`/posts/${id}/view`),
+  download: (id) => `${API_URL}/posts/${id}/download`
 };
 
 export const aiAPI = {

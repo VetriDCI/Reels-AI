@@ -49,6 +49,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/follow', followRoutes);
 app.use('/api/admin', adminRoutes);
+app.set('io', io);
 
 app.get('/api/health', (req, res) => {
   res.json({

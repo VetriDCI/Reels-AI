@@ -6,6 +6,7 @@ import { uploadAPI } from '../../services/api';
 export default function ProfileOverviewPage({ user, onBack, onUpdated }) {
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [bio, setBio] = useState(user?.bio || '');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -33,7 +34,7 @@ export default function ProfileOverviewPage({ user, onBack, onUpdated }) {
     setMsg('');
     setErr('');
     try {
-      await api.put('/auth/profile', { fullName, bio, avatarUrl });
+      await api.put('/auth/profile', { fullName, bio, avatarUrl, phoneNumber });
       setMsg('Saved successfully!');
       onUpdated?.();
     } catch {
@@ -84,6 +85,15 @@ export default function ProfileOverviewPage({ user, onBack, onUpdated }) {
           <input
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
+            className="w-full border-2 border-pink-200 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:border-pink-400"
+          />
+
+          <label className="text-sm text-gray-500 block mb-1">Mobile Number</label>
+          <input
+            type="tel"
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9+() -]/g, ''))}
+            placeholder="+91 98765 43210"
             className="w-full border-2 border-pink-200 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:border-pink-400"
           />
 

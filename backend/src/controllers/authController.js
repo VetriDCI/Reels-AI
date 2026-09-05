@@ -4,14 +4,15 @@ import prisma from '../config/database.js';
 
 export const register = async (req, res) => {
   try {
-    const { username, email, password, fullName } = req.body;
+    const { username, email, password, fullName, phoneNumber } = req.body;
+    const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
 
     if (!username || !email || !password) {
       return res.status(400).json({ success: false, message: 'Username, email and password are required' });
     }
 
     const existingUser = await prisma.user.findFirst({
-      where: { OR: [{ email }, { username }] }
+      where: { OR: [{ email }, { username }, ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])] }
     });
 
     if (existingUser) {
@@ -22,8 +23,8 @@ export const register = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
 
     const user = await prisma.user.create({
-      data: { username, email, passwordHash, fullName: fullName || username },
-      select: { id: true, username: true, email: true, fullName: true, avatarUrl: true, createdAt: true }
+      data: { username, email, passwordHash, fullName: fullName || username, phoneNumber: normalizedPhone || null },
+      select: { id: true, username: true, email: true, phoneNumber: true, fullName: true, avatarUrl: true, createdAt: true }
     });
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '365d' });
@@ -64,7 +65,7 @@ export const login = async (req, res) => {
       success: true,
       message: 'Login successful',
       data: {
-        user: { id: user.id, username: user.username, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, bio: user.bio },
+        user: { id: user.id, username: user.username, email: user.email, phoneNumber: user.phoneNumber, fullName: user.fullName, avatarUrl: user.avatarUrl, bio: user.bio },
         token
       }
     });
@@ -79,7 +80,7 @@ export const getMe = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
       select: {
-        id: true, username: true, email: true, fullName: true, bio: true, avatarUrl: true, earnings: true, createdAt: true,
+        id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, earnings: true, createdAt: true,
         posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 9 },
         followers: { select: { id: true } },
         following: { select: { id: true } }
@@ -102,16 +103,17 @@ export const getMe = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { fullName, bio, avatarUrl } = req.body;
+    const { fullName, bio, avatarUrl, phoneNumber } = req.body;
     const userId = req.userId;
 
     const data = { fullName, bio };
     if (avatarUrl) data.avatarUrl = avatarUrl;
+    if (phoneNumber !== undefined) data.phoneNumber = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
 
     const user = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, username: true, fullName: true, bio: true, avatarUrl: true }
+      select: { id: true, username: true, fullName: true, bio: true, avatarUrl: true, phoneNumber: true }
     });
 
     res.json({ success: true, message: 'Profile updated successfully', data: user });

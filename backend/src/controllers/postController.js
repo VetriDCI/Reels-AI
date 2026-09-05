@@ -10,13 +10,17 @@ export const createPost = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Content or media is required' });
     }
 
+    const normalizedHashtags = [...new Set((Array.isArray(hashtags) ? hashtags : [])
+      .map(tag => String(tag).trim().replace(/^#/, '').toLowerCase())
+      .filter(Boolean))];
+
     const post = await prisma.post.create({
-      data: { userId, content, mediaUrl, mediaType },
+      data: { userId, content: content?.trim() || null, mediaUrl: mediaUrl || null, mediaType: mediaType || 'text' },
       include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
     });
 
-    if (hashtags && hashtags.length > 0) {
-      for (const tagName of hashtags) {
+    if (normalizedHashtags.length > 0) {
+      for (const tagName of normalizedHashtags) {
         const hashtag = await prisma.hashtag.upsert({
           where: { name: tagName },
           update: {},
@@ -178,5 +182,32 @@ export const addComment = async (req, res) => {
   } catch (error) {
     console.error('Add comment error:', error);
     res.status(500).json({ success: false, message: 'Failed to add comment' });
+  }
+};
+
+export const viewPost = async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.userId;
+
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+
+    const existing = await prisma.postView.findUnique({
+      where: { userId_postId: { userId, postId } }
+    });
+
+    if (!existing) {
+      await prisma.$transaction([
+        prisma.postView.create({ data: { userId, postId } }),
+        prisma.post.update({ where: { id: postId }, data: { viewCount: { increment: 1 } } })
+      ]);
+    }
+
+    const updated = await prisma.post.findUnique({ where: { id: postId }, select: { viewCount: true } });
+    res.json({ success: true, data: { viewCount: updated?.viewCount || 0, counted: !existing } });
+  } catch (error) {
+    console.error('View post error:', error);
+    res.status(500).json({ success: false, message: 'Failed to record view' });
   }
 };

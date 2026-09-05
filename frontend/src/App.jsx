@@ -44,6 +44,14 @@ function AppContent() {
     }
   }, []);
 
+  useEffect(() => {
+    const postId = new URLSearchParams(window.location.search).get('post');
+    if (postId) {
+      setReelTarget({ id: postId });
+      setActiveTab('reels');
+    }
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -102,32 +110,17 @@ function AppContent() {
 function TopBar({ logout, onNotifications, onSearch, onProfile }) {
   return (
     <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">RA</span>
-          </div>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            RA Social
-          </h1>
-        </div>
-
-        <div className="flex-1 mx-4 max-w-md">
-          <button onClick={onSearch} className="relative w-full text-left">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <span className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500">Search posts, users, hashtags...</span>
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          <button onClick={onNotifications} aria-label="Notifications" className="relative p-2 hover:bg-gray-100 rounded-full">
-            <Bell className="w-6 h-6 text-gray-700" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
-          <button onClick={onProfile} aria-label="My Profile" className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden">
-            <User className="w-5 h-5" />
-          </button>
-        </div>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button onClick={onSearch} className="relative flex-1 text-left" aria-label="Search">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <span className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500">Search</span>
+        </button>
+        <button onClick={onNotifications} aria-label="Notifications" className="relative p-2 hover:bg-gray-100 rounded-full shrink-0">
+          <Bell className="w-6 h-6 text-gray-700" />
+        </button>
+        <button onClick={onProfile} aria-label="My Profile" className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden shrink-0">
+          <User className="w-5 h-5" />
+        </button>
       </div>
     </header>
   );

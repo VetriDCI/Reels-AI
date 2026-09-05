@@ -11,6 +11,7 @@ model User {
   id            String    @id @default(uuid())
   username      String    @unique
   email         String    @unique
+  phoneNumber   String?   @unique
   passwordHash  String
   fullName      String?
   bio           String?   @default("")
@@ -21,6 +22,7 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   posts         Post[]
+  postViews     PostView[]
   comments      Comment[]
   likes         Like[]
   followers     Follow[]  @relation("followers")
@@ -42,6 +44,8 @@ model Post {
   mediaUrl    String?
   mediaType   String?
   status      String   @default("approved")
+  viewCount   Int      @default(0)
+  postViews   PostView[]
   likes       Like[]
   comments    Comment[]
   notifications Notification[]
@@ -144,4 +148,17 @@ model Message {
 
   @@index([chatId])
   @@index([senderId])
+}
+
+model PostView {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+  @@index([postId])
+  @@index([userId])
 }

@@ -25,6 +25,12 @@ export const getChatMessages = async (req, res) => {
     const { chatId } = req.params;
     const userId = req.userId;
 
+    const chat = await prisma.chat.findFirst({
+      where: { id: chatId, participants: { some: { id: userId } } },
+      select: { id: true }
+    });
+    if (!chat) return res.status(404).json({ success: false, message: 'Chat not found' });
+
     const messages = await prisma.message.findMany({
       where: { chatId },
       include: { sender: { select: { id: true, username: true, avatarUrl: true } } },
@@ -47,6 +53,15 @@ export const createChat = async (req, res) => {
   try {
     const { participantId } = req.body;
     const userId = req.userId;
+
+    if (!participantId || participantId === userId) {
+      return res.status(400).json({ success: false, message: 'Choose another user' });
+    }
+
+    const participant = await prisma.user.findUnique({ where: { id: participantId }, select: { id: true, status: true } });
+    if (!participant || participant.status === 'blocked') {
+      return res.status(404).json({ success: false, message: 'User is not available for chat' });
+    }
 
     const existingChat = await prisma.chat.findFirst({
       where: {
@@ -100,6 +115,8 @@ export const sendMessage = async (req, res) => {
       include: { sender: { select: { id: true, username: true, avatarUrl: true } } }
     });
 
+    await prisma.chat.update({ where: { id: chatId }, data: { updatedAt: new Date() } });
+    req.app.get('io')?.to(`chat:${chatId}`).emit('new_message', message);
     res.status(201).json({ success: true, data: message });
   } catch (error) {
     console.error('Send message error:', error);
