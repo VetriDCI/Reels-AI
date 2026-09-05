@@ -111,7 +111,13 @@ function TopBar({ logout, onNotifications, onSearch, onProfile }) {
   return (
     <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
       <div className="flex items-center gap-3 px-4 py-3">
-        <button onClick={onSearch} className="relative flex-1 text-left" aria-label="Search">
+        <div
+          className="shrink-0 text-left font-extrabold text-lg tracking-tight text-gray-900 whitespace-nowrap"
+          aria-label="RA Social"
+        >
+          RA Social
+        </div>
+        <button onClick={onSearch} className="relative flex-1 text-left min-w-0" aria-label="Search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
           <span className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500">Search</span>
         </button>

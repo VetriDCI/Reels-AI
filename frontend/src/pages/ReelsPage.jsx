@@ -186,7 +186,15 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
               <button onClick={() => setMenuForId(menuForId === reel.id ? null : reel.id)} aria-label="More options"><MoreHorizontal className="w-6 h-6" /></button>
               {menuForId === reel.id && (
                 <div className="absolute right-8 bottom-0 z-[60] w-48 bg-white rounded-xl shadow-2xl py-1 text-gray-800">
-                  <button onClick={() => handleDownload(reel)} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Download className="w-4 h-4" />Download</button>
+                  <button onClick={() => {
+                    try {
+                      const saved = JSON.parse(localStorage.getItem('ra_social_saved_posts') || '[]');
+                      const next = saved.includes(reel.id) ? saved : [...saved, reel.id];
+                      localStorage.setItem('ra_social_saved_posts', JSON.stringify(next));
+                      alert('Saved to app');
+                    } catch {}
+                    setMenuForId(null);
+                  }} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Download className="w-4 h-4" />Save to app</button>
                   <button onClick={() => copyLink(reel)} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Link2 className="w-4 h-4" />Copy link</button>
                   <button onClick={() => { window.open(reel.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuForId(null); }} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><ExternalLink className="w-4 h-4" />Open media</button>
                   <button onClick={() => setMenuForId(null)} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><Flag className="w-4 h-4" />Report</button>

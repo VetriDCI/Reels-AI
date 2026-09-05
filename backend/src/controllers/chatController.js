@@ -31,21 +31,56 @@ export const getChatMessages = async (req, res) => {
     });
     if (!chat) return res.status(404).json({ success: false, message: 'Chat not found' });
 
+    await prisma.message.updateMany({
+      where: { chatId, senderId: { not: userId }, isRead: false },
+      data: { isRead: true }
+    });
+
     const messages = await prisma.message.findMany({
       where: { chatId },
       include: { sender: { select: { id: true, username: true, avatarUrl: true } } },
       orderBy: { createdAt: 'asc' }
     });
 
-    await prisma.message.updateMany({
-      where: { chatId, senderId: { not: userId }, isRead: false },
-      data: { isRead: true }
-    });
+    const readIds = messages.filter((message) => message.senderId !== userId && message.isRead).map((message) => message.id);
+    if (readIds.length) req.app.get('io')?.to(`chat:${chatId}`).emit('message_read', { chatId, messageIds: readIds });
 
     res.json({ success: true, data: messages });
   } catch (error) {
     console.error('Get messages error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch messages' });
+  }
+};
+
+export const markChatRead = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.userId;
+
+    const chat = await prisma.chat.findFirst({
+      where: { id: chatId, participants: { some: { id: userId } } },
+      select: { id: true }
+    });
+    if (!chat) return res.status(404).json({ success: false, message: 'Chat not found' });
+
+    const unread = await prisma.message.findMany({
+      where: { chatId, senderId: { not: userId }, isRead: false },
+      select: { id: true }
+    });
+    const messageIds = unread.map((message) => message.id);
+
+    if (messageIds.length) {
+      await prisma.message.updateMany({
+        where: { id: { in: messageIds } },
+        data: { isRead: true }
+      });
+      req.app.get('io')?.to(`chat:${chatId}`).emit('message_read', { chatId, messageIds });
+    }
+
+    res.json({ success: true, data: { messageIds } });
+  } catch (error) {
+    console.error('Mark chat read error:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark messages as read' });
   }
 };
 

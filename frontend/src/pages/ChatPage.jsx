@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { Send, Paperclip, Smile, Mic, Plus, Search, X, MessageCircle } from 'lucide-react';
+import { Send, Paperclip, Smile, Mic, Plus, Search, X, MessageCircle, Check, CheckCheck } from 'lucide-react';
 import api, { searchAPI, chatAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,6 +19,8 @@ function ChatPage() {
   const [inviteNumber, setInviteNumber] = useState('');
   const [phoneQuery, setPhoneQuery] = useState('');
   const [phoneSearching, setPhoneSearching] = useState(false);
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
   const selectedChatRef = useRef(null);
@@ -34,8 +36,17 @@ function ChatPage() {
 
     socketRef.current.on('new_message', (data) => {
       if (selectedChatRef.current && data.chatId === selectedChatRef.current.id) {
-        setMessages((prev) => [...prev, data]);
+        setMessages((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data]);
+        if (data.senderId !== user?.id) {
+          api.post(`/chats/${data.chatId}/read`).catch(() => {});
+        }
       }
+    });
+
+    socketRef.current.on('message_read', ({ chatId, messageIds }) => {
+      if (selectedChatRef.current?.id !== chatId) return;
+      const ids = new Set(messageIds || []);
+      setMessages((prev) => prev.map((m) => ids.has(m.id) ? { ...m, isRead: true } : m));
     });
 
     fetchChats();
@@ -49,8 +60,9 @@ function ChatPage() {
 
   useEffect(() => {
     if (selectedChat) {
+      // Join first so read receipts and new-message events cannot race the fetch.
+      socketRef.current?.emit('join_chat', selectedChat.id);
       fetchMessages(selectedChat.id);
-      socketRef.current.emit('join_chat', selectedChat.id);
     }
   }, [selectedChat]);
 
@@ -77,19 +89,31 @@ function ChatPage() {
     try {
       const response = await api.get(`/chats/${chatId}/messages`);
       setMessages(response.data.data);
+      // Keep the read state in sync for both participants.
+      await api.post(`/chats/${chatId}/read`);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     }
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedChat) return;
+    const content = newMessage.trim();
+    if (!content || !selectedChat || sendingRef.current) return;
 
+    sendingRef.current = true;
+    setSending(true);
     try {
-      await api.post(`/chats/${selectedChat.id}/messages`, { content: newMessage.trim() });
+      const response = await api.post(`/chats/${selectedChat.id}/messages`, { content });
+      // Socket.io also broadcasts this message to the sender. Add the API
+      // response only as a fallback if the socket event has not arrived yet.
+      const sent = response.data.data;
+      setMessages((prev) => prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]);
       setNewMessage('');
     } catch (error) {
       console.error('Failed to send message:', error);
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
   };
 
@@ -213,7 +237,14 @@ function ChatPage() {
               {messages.map((msg, index) => (
                 <div key={msg.id || index} className={`flex ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-xs px-4 py-2 rounded-2xl ${msg.senderId === user?.id ? 'bg-purple-600 text-white' : 'bg-white text-gray-800'}`}>
-                    <p>{msg.content}</p>
+                    <div className="flex items-end gap-2">
+                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                      {msg.senderId === user?.id && (
+                        msg.isRead
+                          ? <CheckCheck className="w-4 h-4 text-sky-300 shrink-0" aria-label="Read" />
+                          : <Check className="w-4 h-4 opacity-70 shrink-0" aria-label="Sent" />
+                      )}
+                    </div>
                     <p className="text-xs mt-1 opacity-70">{new Date(msg.createdAt).toLocaleTimeString()}</p>
                   </div>
                 </div>
@@ -229,14 +260,14 @@ function ChatPage() {
                 type="text"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 placeholder="Type a message..."
                 className="flex-1 px-4 py-2 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
               <button className="p-2 hover:bg-gray-100 rounded-full">
                 <Smile className="w-6 h-6 text-gray-500" />
               </button>
-              <button onClick={sendMessage} className="p-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full hover:opacity-90">
+              <button onClick={sendMessage} disabled={sending || !newMessage.trim()} className="p-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Send message">
                 <Send className="w-5 h-5" />
               </button>
             </div>

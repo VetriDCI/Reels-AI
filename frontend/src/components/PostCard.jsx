@@ -108,13 +108,10 @@ function PostCard({ post, onLike, onOpenReel }) {
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-gray-900 truncate">{post.user?.fullName || post.user?.username}</h3>
               {post.user?.id !== user?.id && (
-                <button onClick={handleFollow} className={`px-3 py-0.5 rounded-full text-xs font-semibold ${following ? 'bg-gray-100 text-gray-600' : 'bg-purple-600 text-white'}`}>
+                <button onClick={handleFollow} className={`px-4 py-1.5 rounded-full text-sm font-semibold ${following ? 'bg-gray-100 text-gray-600' : 'bg-purple-600 text-white'}`}>
                   {following ? 'Joined' : 'Join'}
                 </button>
               )}
-              <span className="flex items-center gap-1 text-xs text-gray-400 whitespace-nowrap">
-                <Eye className="w-3.5 h-3.5" />{views.toLocaleString()}
-              </span>
             </div>
             <p className="text-sm text-gray-500">@{post.user?.username}</p>
           </div>
@@ -147,31 +144,39 @@ function PostCard({ post, onLike, onOpenReel }) {
         )}
       </div>}
 
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-t">
-        <div className="flex items-center gap-4 min-w-0">
-          <button onClick={onLike} className="flex items-center gap-1.5 text-gray-600 hover:text-red-500" aria-label="Like">
-            <Heart className="w-6 h-6" /><span>{post.likesCount || 0}</span>
+      <div className="flex items-center gap-3 px-4 py-3 border-t overflow-x-auto">
+        <button onClick={recordView} className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 shrink-0" aria-label="Views">
+          <Eye className="w-6 h-6" /><span>{views.toLocaleString()}</span>
+        </button>
+        <button onClick={onLike} className="flex items-center gap-1.5 text-gray-600 hover:text-red-500 shrink-0" aria-label="Like">
+          <Heart className="w-6 h-6" /><span>{post.likesCount || 0}</span>
+        </button>
+        <button onClick={loadComments} className="flex items-center gap-1.5 text-gray-600 hover:text-blue-500 shrink-0" aria-label="Comments">
+          <MessageSquare className="w-6 h-6" /><span>{post.commentsCount || 0}</span>
+        </button>
+        <button onClick={share} className="flex items-center gap-1.5 text-gray-600 hover:text-green-500 shrink-0" aria-label="Share">
+          <Share2 className="w-6 h-6" /><span className="hidden sm:inline text-xs">{sharing ? 'Copied' : 'Share'}</span>
+        </button>
+        {post.mediaUrl && (
+          <button onClick={handleDownload} disabled={downloading} aria-label="Download" className="flex items-center gap-1.5 text-gray-600 hover:text-purple-600 disabled:opacity-50 shrink-0">
+            <Download className="w-6 h-6" /><span className="hidden sm:inline text-xs">{downloading ? 'Saving…' : 'Download'}</span>
           </button>
-          <button onClick={loadComments} className="flex items-center gap-1.5 text-gray-600 hover:text-blue-500" aria-label="Comments">
-            <MessageSquare className="w-6 h-6" /><span>{post.commentsCount || 0}</span>
-          </button>
-          <button onClick={share} className="flex items-center gap-1.5 text-gray-600 hover:text-green-500" aria-label="Share">
-            <Share2 className="w-6 h-6" />{sharing && <span className="text-xs">Copied</span>}
-          </button>
-        </div>
-        <div className="flex items-center gap-3 relative shrink-0">
-          {post.mediaUrl && (
-            <button onClick={handleDownload} disabled={downloading} aria-label="Download" className="flex items-center gap-1 text-gray-600 hover:text-purple-600 disabled:opacity-50">
-              <Download className="w-6 h-6" /><span className="hidden sm:inline text-xs">{downloading ? 'Saving…' : 'Download'}</span>
-            </button>
-          )}
-          <span className="flex items-center gap-1 text-gray-400" aria-label="Views"><Eye className="w-5 h-5" /><span className="text-sm">{views.toLocaleString()}</span></span>
+        )}
+        <div className="relative shrink-0">
           <button onClick={() => setMenuOpen(v => !v)} aria-label="More options" className="p-1 text-gray-600 hover:text-gray-900">
             <MoreHorizontal className="w-6 h-6" />
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-9 z-[60] w-52 bg-white rounded-xl shadow-2xl border py-1">
-              {post.mediaUrl && <button onClick={handleDownload} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"><Download className="w-4 h-4" />Download</button>}
+              {post.mediaUrl && <button onClick={() => {
+                try {
+                  const saved = JSON.parse(localStorage.getItem('ra_social_saved_posts') || '[]');
+                  const next = saved.includes(post.id) ? saved : [...saved, post.id];
+                  localStorage.setItem('ra_social_saved_posts', JSON.stringify(next));
+                  alert('Saved to app');
+                } catch {}
+                setMenuOpen(false);
+              }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"><Download className="w-4 h-4" />Save to app</button>}
               {post.mediaUrl && <button onClick={openMedia} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"><ExternalLink className="w-4 h-4" />Open media</button>}
               <button onClick={copyLink} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"><Link2 className="w-4 h-4" />Copy link</button>
               <button onClick={reportPost} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"><Flag className="w-4 h-4" />Report</button>
