@@ -43,7 +43,7 @@ export const getFeed = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const posts = await prisma.post.findMany({
-      where: { status: { not: 'rejected' } },
+      where: { status: 'approved' },
       include: {
         user: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
         likes: { select: { id: true } },
@@ -123,6 +123,20 @@ export const deletePost = async (req, res) => {
   } catch (error) {
     console.error('Delete post error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete post' });
+  }
+};
+
+export const hidePost = async (req, res) => {
+  try {
+    const post = await prisma.post.findUnique({ where: { id: req.params.id } });
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+    if (post.userId !== req.userId) return res.status(403).json({ success: false, message: 'Not authorized' });
+    const nextStatus = post.status === 'hidden' ? 'approved' : 'hidden';
+    const updated = await prisma.post.update({ where: { id: post.id }, data: { status: nextStatus } });
+    res.json({ success: true, data: { hidden: nextStatus === 'hidden' }, message: nextStatus === 'hidden' ? 'Post hidden' : 'Post restored' });
+  } catch (error) {
+    console.error('Hide post error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update post visibility' });
   }
 };
 

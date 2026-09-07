@@ -13,6 +13,7 @@ import followRoutes from './routes/followRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import prisma from './config/database.js';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -59,10 +60,34 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('Authentication required'));
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.userId = decoded.userId;
+    next();
+  } catch {
+    next(new Error('Invalid token'));
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-  socket.on('join_chat', (chatId) => { socket.join(`chat:${chatId}`); });
-  socket.on('send_message', (data) => { io.to(`chat:${data.chatId}`).emit('new_message', data); });
+
+  socket.on('join_chat', async (chatId) => {
+    try {
+      if (!chatId) return;
+      const chat = await prisma.chat.findUnique({
+        where: { id: chatId },
+        select: { participants: { where: { id: socket.userId }, select: { id: true } } }
+      });
+      if (chat?.participants?.length) socket.join(`chat:${chatId}`);
+    } catch (error) {
+      console.error('Socket chat join error:', error.message);
+    }
+  });
+
   socket.on('disconnect', () => { console.log('User disconnected:', socket.id); });
 });
 

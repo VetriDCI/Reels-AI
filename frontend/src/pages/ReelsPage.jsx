@@ -21,8 +21,11 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
   const containerRef = useRef(null);
   const itemRefs = useRef({});
   const videoRefs = useRef({});
+  const menuRefs = useRef({});
 
   useEffect(() => { loadReels(); }, []);
+
+  useEffect(() => { const close = e => { if (menuForId && !menuRefs.current[menuForId]?.contains(e.target)) setMenuForId(null); }; document.addEventListener('pointerdown', close); return () => document.removeEventListener('pointerdown', close); }, [menuForId]);
 
   useEffect(() => {
     if (!initialPostId || reels.length === 0) return;
@@ -182,7 +185,7 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
             <button onClick={() => openComments(reel)} className="flex flex-col items-center gap-1"><MessageCircle className="w-6 h-6" /><span className="text-xs">{reel.commentsCount || 0}</span></button>
             <button onClick={() => handleShare(reel)} className="flex flex-col items-center gap-1"><Share2 className="w-6 h-6" /><span className="text-xs">{sharedId === reel.id ? 'Copied!' : 'Share'}</span></button>
             <button onClick={() => handleDownload(reel)} disabled={downloadingId === reel.id} className="flex flex-col items-center gap-1 disabled:opacity-50"><Download className="w-6 h-6" /><span className="text-xs">{downloadingId === reel.id ? 'Saving...' : 'Download'}</span></button>
-            <div className="relative">
+            <div ref={el => { menuRefs.current[reel.id] = el; }} className="relative">
               <button onClick={() => setMenuForId(menuForId === reel.id ? null : reel.id)} aria-label="More options"><MoreHorizontal className="w-6 h-6" /></button>
               {menuForId === reel.id && (
                 <div className="absolute right-8 bottom-0 z-[60] w-48 bg-white rounded-xl shadow-2xl py-1 text-gray-800">
@@ -207,10 +210,9 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-xs font-bold">{(reel.user?.fullName?.[0] || reel.user?.username?.[0] || 'U').toUpperCase()}</div>
               <span className="font-semibold text-sm">{reel.user?.fullName || reel.user?.username}</span>
-              {reel.user?.id !== currentUser?.id && <button onClick={() => handleFollow(reel.user?.id, reel.id)} className="px-3 py-1 bg-blue-500 rounded-full text-xs font-semibold">{reel._following ? 'Following' : 'Follow'}</button>}
+              {reel.user?.id !== currentUser?.id && <button onClick={() => handleFollow(reel.user?.id, reel.id)} className="px-4 py-2 bg-blue-500 rounded-full text-sm font-semibold">{reel._following ? 'Joined' : 'Join'}</button>}
             </div>
             <p className="text-sm">{reel.content}</p>
-            {reel.hashtags?.length > 0 && <p className="text-xs text-blue-300 mt-1">{reel.hashtags.map(h => `#${h}`).join(' ')}</p>}
           </div>
         </div>
       ))}
@@ -222,7 +224,7 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {commentLoading && <p className="text-sm text-gray-400 text-center py-6">Loading comments...</p>}
               {!commentLoading && comments.length === 0 && <p className="text-sm text-gray-400 text-center py-6">No comments yet. Be the first!</p>}
-              {comments.map(c => <div key={c.id} className="text-sm bg-gray-50 rounded-lg p-3 text-gray-800"><b>{c.user?.fullName || c.user?.username}</b><div className="mt-1">{c.content}</div></div>)}
+              {comments.map(c => <div key={c.id} className="text-sm bg-gray-50 rounded-lg p-3 text-gray-800"><b>{c.user?.fullName || c.user?.username}</b><div className="mt-1">{c.content}</div><div className="flex gap-4 mt-2"><button className="text-xs text-gray-500 hover:text-red-500"><Heart className="inline w-3.5 h-3.5 mr-1"/>Like</button><button onClick={()=>setCommentText(`@${c.user?.username||''} `)} className="text-xs text-gray-500 hover:text-purple-600">Reply</button></div></div>)}
             </div>
             <div className="flex gap-2 p-4 border-t"><input autoFocus value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && addComment()} placeholder="Write a comment..." className="flex-1 border rounded-full px-4 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500" /><button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white" aria-label="Send comment"><Send className="w-4 h-4" /></button></div>
           </div>

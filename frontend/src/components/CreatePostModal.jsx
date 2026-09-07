@@ -1,16 +1,15 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Sparkles, X, Image, Video, Radio, RotateCcw, Pencil, Check, RefreshCw } from 'lucide-react';
-import { postAPI, uploadAPI, aiAPI } from '../services/api';
+import { X, Image, Video, Radio, RotateCcw, Pencil, Check, RefreshCw, Play, Pause } from 'lucide-react';
+import { postAPI, uploadAPI } from '../services/api';
 
 function CreatePostModal({ onClose, onPostCreated }) {
   const [content, setContent] = useState('');
-  const [hashtags, setHashtags] = useState([]);
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [mediaKind, setMediaKind] = useState(null);
   const [uploadStage, setUploadStage] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const [livePreview, setLivePreview] = useState(false);
+  const [liveState, setLiveState] = useState('idle');
   const [cameraError, setCameraError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [imageRotation, setImageRotation] = useState(0);
@@ -35,7 +34,7 @@ function CreatePostModal({ onClose, onPostCreated }) {
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
-    setLivePreview(false);
+    setLivePreview(false); setLiveState('idle');
   };
 
   const startLivePreview = async () => {
@@ -47,7 +46,7 @@ function CreatePostModal({ onClose, onPostCreated }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      setLivePreview(true);
+      setLivePreview(true); setLiveState('live');
       requestAnimationFrame(() => { if (videoRef.current) videoRef.current.srcObject = stream; });
     } catch {
       setCameraError('Camera/microphone permission was denied or is unavailable.');
@@ -77,26 +76,6 @@ function CreatePostModal({ onClose, onPostCreated }) {
     setFile(null); setPreviewUrl(null); setMediaKind(null); setEditOpen(false); setImageRotation(0);
     if (photoInputRef.current) photoInputRef.current.value = '';
     if (videoInputRef.current) videoInputRef.current.value = '';
-  };
-
-  const handleGenerateCaption = async () => {
-    if (!content.trim()) return;
-    setAiLoading(true);
-    try {
-      const response = await aiAPI.generateCaption({ context: content });
-      if (response.data.success) setContent(response.data.data.caption);
-    } catch (error) { console.error(error); }
-    finally { setAiLoading(false); }
-  };
-
-  const handleGenerateHashtags = async () => {
-    if (!content.trim()) return;
-    setAiLoading(true);
-    try {
-      const response = await aiAPI.generateHashtags({ content });
-      if (response.data.success) setHashtags(response.data.data.hashtags || []);
-    } catch (error) { console.error(error); }
-    finally { setAiLoading(false); }
   };
 
   const rotateImage = async () => {
@@ -136,7 +115,7 @@ function CreatePostModal({ onClose, onPostCreated }) {
         mediaType = upload.data.data.mediaType;
       }
       setUploadStage('publishing');
-      await postAPI.create({ content: content.trim(), mediaUrl, mediaType, hashtags });
+      await postAPI.create({ content: content.trim(), mediaUrl, mediaType });
       onPostCreated?.();
       stopCamera();
       onClose();
@@ -167,12 +146,6 @@ function CreatePostModal({ onClose, onPostCreated }) {
         <div className="p-4 space-y-4">
           <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="What's on your mind?" className="w-full h-32 resize-none focus:outline-none text-gray-800" />
 
-          <div className="flex flex-wrap gap-2">
-            <button onClick={handleGenerateCaption} disabled={aiLoading || !content.trim()} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full text-sm disabled:opacity-50"><Sparkles className="w-4 h-4" />{aiLoading ? 'Generating...' : 'AI Caption'}</button>
-            <button onClick={handleGenerateHashtags} disabled={aiLoading || !content.trim()} className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-full text-sm disabled:opacity-50"><Sparkles className="w-4 h-4" />AI Hashtags</button>
-          </div>
-
-          {hashtags.length > 0 && <div className="flex flex-wrap gap-2">{hashtags.map((tag, i) => <span key={i} className="text-purple-600 text-sm font-medium">#{String(tag).replace(/^#/, '')}</span>)}</div>}
 
           {!previewUrl && !livePreview && (
             <div className="grid grid-cols-3 gap-3">
@@ -230,7 +203,10 @@ function CreatePostModal({ onClose, onPostCreated }) {
             <div className="border-2 border-red-200 rounded-xl p-4 bg-red-50">
               <div className="flex items-center justify-between gap-3">
                 <div><p className="font-bold text-red-600">● LIVE CAMERA</p><p className="text-xs text-gray-500">Camera preview only. A real public multi-user livestream requires a streaming service/server.</p></div>
-                <button onClick={stopCamera} className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-full"><Video className="w-4 h-4" />Stop</button>
+                <div className="flex gap-2">
+                  <button onClick={() => { if (videoRef.current) { if (videoRef.current.paused) { videoRef.current.play(); setLiveState('live'); } else { videoRef.current.pause(); setLiveState('paused'); } } }} className="flex items-center gap-2 px-3 py-2 bg-white border rounded-full text-sm font-semibold">{liveState === 'live' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}{liveState === 'live' ? 'Pause' : 'Resume'}</button>
+                  <button onClick={stopCamera} className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-full"><X className="w-4 h-4" />Stop</button>
+                </div>
               </div>
               <video ref={videoRef} autoPlay muted playsInline className="mt-3 w-full max-h-80 rounded-lg bg-black object-cover" />
               {cameraError && <p className="text-sm text-red-600 mt-2">{cameraError}</p>}

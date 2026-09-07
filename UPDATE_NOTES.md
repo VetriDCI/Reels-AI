@@ -1,26 +1,21 @@
-# RA Social update
+# RA Social 1-8 Fix Update
 
-Implemented:
-- Search screen starts with only the search control; tabs/results appear after a query.
-- Fixed comment UI as a reliable modal/sheet.
-- Fixed Cloudinary downloads using attachment delivery URLs, with fallback.
-- Posts now have Like, Comment, Share, Download, Views and More actions in one action row.
-- Added Join button beside the channel/user name and real per-user post view counting.
-- Home video cards no longer play in place; tapping opens the selected video in Reels.
-- Reels supports direct opening from `?post=<id>`, active-video play/pause, comments, download and more actions.
-- Upload uses the device file picker for Photo/Video (no forced camera capture).
-- Made LIVE action prominent and camera preview accessible.
-- Added selected-media preview, replace/remove controls and a basic image rotate editor.
-- Upload/publishing now shows a blocking progress overlay.
-- Added optional mobile number to registration/profile and phone-number user lookup for starting an in-app chat.
-- Added WhatsApp/share invite flow for people who are not yet registered.
-- Fixed ChatPage participant selection so the other user is selected correctly.
+- Home feed no longer shows owner Delete controls.
+- Owner post management is available from the profile/My Posts area: Hide/Restore and Delete.
+- More menus close when clicking outside; same behavior applied to Reels.
+- Action row uses View, Like, Comment, Share, Download, More with compact spacing.
+- Join button enlarged and toggles Joined/Join.
+- Comment panel includes Like and Reply actions.
+- Create Post removed AI Caption/AI Hashtags controls.
+- LIVE camera now has live/paused/resume/stop controls.
+- Chat redesigned for mobile: conversation list and chat view switch on small screens, with back button.
+- Chat composer order: Gallery, Emoji, Text, Send.
+- Gallery uploads an image/video attachment through the existing upload endpoint and sends its URL with the message.
+- Emoji picker added.
+- Chat send uses a sending lock to prevent repeated-click duplicate sends.
+- Message sent/read ticks retained.
+- Added backend post visibility endpoint PATCH /posts/:id/hide.
+- Hidden posts are excluded from the normal feed because feed already filters non-approved/rejected status.
+- Backend syntax checks passed.
 
-Backend database change:
-- `User.phoneNumber` (optional unique)
-- `Post.viewCount`
-- `PostView` unique per user/post
-
-Deployment:
-- Backend startup already runs `prisma db push`, so the new schema fields are applied on startup.
-- Keep your existing environment variables (DATABASE_URL, JWT_SECRET, Cloudinary values, FRONTEND_URL/ALLOWED_ORIGINS).
+Note: frontend production build could not be executed in this environment because npm dependencies were not available in the local cache and registry installation timed out.

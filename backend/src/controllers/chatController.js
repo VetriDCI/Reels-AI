@@ -127,10 +127,10 @@ export const createChat = async (req, res) => {
 export const sendMessage = async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { content } = req.body;
+    const { content, mediaUrl } = req.body;
     const userId = req.userId;
 
-    if (!content?.trim()) {
+    if (!content?.trim() && !mediaUrl) {
       return res.status(400).json({ success: false, message: 'Message content is required' });
     }
 
@@ -146,7 +146,7 @@ export const sendMessage = async (req, res) => {
     }
 
     const message = await prisma.message.create({
-      data: { chatId, senderId: userId, content: content.trim() },
+      data: { chatId, senderId: userId, content: content?.trim() || '', mediaUrl: mediaUrl || null },
       include: { sender: { select: { id: true, username: true, avatarUrl: true } } }
     });
 

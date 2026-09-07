@@ -39,6 +39,7 @@ export const postAPI = {
   getFeed: (page = 1, limit = 10) => api.get(`/posts/feed?page=${page}&limit=${limit}`),
   getById: (id) => api.get(`/posts/${id}`),
   delete: (id) => api.delete(`/posts/${id}`),
+  hide: (id) => api.patch(`/posts/${id}/hide`),
   like: (id) => api.post(`/posts/${id}/like`),
   addComment: (id, content) => api.post(`/posts/${id}/comments`, { content }),
   view: (id) => api.post(`/posts/${id}/view`),
@@ -66,7 +67,7 @@ export const chatAPI = {
   getChats: () => api.get('/chats'),
   getMessages: (chatId) => api.get(`/chats/${chatId}/messages`),
   createChat: (participantId) => api.post('/chats', { participantId }),
-  sendMessage: (chatId, content) => api.post(`/chats/${chatId}/messages`, { content })
+  sendMessage: (chatId, content, mediaUrl = null) => api.post(`/chats/${chatId}/messages`, { content, mediaUrl })
 };
 
 export const followAPI = {
