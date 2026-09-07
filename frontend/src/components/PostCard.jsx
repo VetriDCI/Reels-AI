@@ -20,6 +20,10 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
 
   useEffect(() => setViews(post.viewCount || 0), [post.viewCount]);
   useEffect(() => {
+    if (!post.user?.id || post.user.id === user?.id) return;
+    followAPI.getStatus(post.user.id).then(res => setFollowing(Boolean(res.data.data.following))).catch(() => {});
+  }, [post.user?.id]);
+  useEffect(() => {
     const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
@@ -45,8 +49,16 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
     const text = comment.trim(); if (!text) return;
     try {
       const res = await postAPI.addComment(post.id, replyTo ? `${replyTo.user?.username ? '@' + replyTo.user.username + ' ' : ''}${text}` : text);
-      setComments(prev => [res.data.data, ...prev]); setComment(''); setReplyTo(null);
+      setComments(prev => [{ ...res.data.data, likes: [] }, ...prev]); setComment(''); setReplyTo(null);
     } catch (e) { alert(e.response?.data?.message || 'Failed to add comment'); }
+  };
+  const toggleCommentLike = async (commentId) => {
+    try {
+      const res = await postAPI.likeComment(commentId);
+      setComments(prev => prev.map(c => c.id === commentId
+        ? { ...c, likes: res.data.data.liked ? [...(c.likes || []), { userId: user?.id }] : (c.likes || []).filter(l => l.userId !== user?.id) }
+        : c));
+    } catch (e) { console.error('Failed to like comment', e); }
   };
   const share = async () => {
     const url = `${window.location.origin}/?post=${post.id}`;
@@ -89,19 +101,19 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
         ) : <button type="button" onClick={recordView} className="block w-full text-left"><img src={post.mediaUrl} alt="Post media" loading="lazy" className="w-full max-h-[70vh] object-contain rounded-lg bg-gray-100" /></button>}
       </div>}
 
-      <div className="flex items-center gap-1.5 px-3 py-3 border-t overflow-x-auto whitespace-nowrap">
+      <div className="flex items-center gap-3 px-3 py-3 border-t overflow-x-auto whitespace-nowrap">
         <button onClick={recordView} className="action-btn"><Eye className="w-5 h-5" /><span>{views.toLocaleString()}</span></button>
         <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
         <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
         <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
         {post.mediaUrl && <button onClick={handleDownload} disabled={downloading} className="action-btn hover:text-purple-600 disabled:opacity-50"><Download className="w-5 h-5" /><span>{downloading ? 'Saving…' : 'Download'}</span></button>}
-        <div ref={menuRef} className="relative shrink-0 ml-auto">
+        <div ref={menuRef} className="relative shrink-0">
           <button onClick={() => setMenuOpen(v => !v)} className="action-btn" aria-expanded={menuOpen}><MoreHorizontal className="w-5 h-5" /><span>More</span></button>
           {menuOpen && <div className="absolute right-0 bottom-10 z-[60] w-52 bg-white rounded-xl shadow-2xl border py-1">
             {post.mediaUrl && <button onClick={saveToApp} className="menu-item"><Download className="w-4 h-4" />Save to app</button>}
             {post.mediaUrl && <button onClick={() => { window.open(post.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuOpen(false); }} className="menu-item"><ExternalLink className="w-4 h-4" />Open media</button>}
             <button onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/?post=${post.id}`); alert('Post link copied'); } catch {} setMenuOpen(false); }} className="menu-item"><Link2 className="w-4 h-4" />Copy link</button>
-            {profileMode && user?.id === post.user?.id && <><button onClick={handleHide} className="menu-item"><Eye className="w-4 h-4" />Hide post</button><button onClick={handleDelete} className="menu-item text-red-600"><X className="w-4 h-4" />Delete post</button></>}
+            {profileMode && user?.id === post.user?.id && <><button onClick={handleHide} className="menu-item"><Eye className="w-4 h-4" />{post.hidden ? 'Restore post' : 'Hide post'}</button><button onClick={handleDelete} className="menu-item text-red-600"><X className="w-4 h-4" />Delete post</button></>}
             <button onClick={() => { alert('Post reported.'); setMenuOpen(false); }} className="menu-item text-red-600"><Flag className="w-4 h-4" />Report</button>
           </div>}
         </div>
@@ -113,7 +125,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {commentLoading && <p className="text-sm text-gray-400 text-center">Loading comments…</p>}
             {!commentLoading && comments.length === 0 && <p className="text-sm text-gray-400 text-center py-8">No comments yet.</p>}
-            {comments.map(c => <div key={c.id} className="rounded-xl bg-gray-50 p-3"><div className="flex items-start gap-2"><img src={c.user?.avatarUrl || `https://i.pravatar.cc/80?u=${c.user?.id}`} className="w-8 h-8 rounded-full" alt="" /><div className="flex-1"><b className="text-sm">{c.user?.fullName || c.user?.username}</b><p className="text-sm text-gray-700 mt-1 break-words">{c.content}</p><div className="flex gap-4 mt-2"><button className="text-xs text-gray-500 hover:text-red-500"><Heart className="inline w-3.5 h-3.5 mr-1" />Like</button><button onClick={() => { setReplyTo(c); setComment(''); }} className="text-xs text-gray-500 hover:text-purple-600"><Reply className="inline w-3.5 h-3.5 mr-1" />Reply</button></div></div></div></div>)}
+            {comments.map(c => { const liked = (c.likes || []).some(l => l.userId === user?.id); const likeCount = (c.likes || []).length; return <div key={c.id} className="rounded-xl bg-gray-50 p-3"><div className="flex items-start gap-2"><img src={c.user?.avatarUrl || `https://i.pravatar.cc/80?u=${c.user?.id}`} className="w-8 h-8 rounded-full" alt="" /><div className="flex-1"><b className="text-sm">{c.user?.fullName || c.user?.username}</b><p className="text-sm text-gray-700 mt-1 break-words">{c.content}</p><div className="flex items-center gap-4 mt-2"><button onClick={() => toggleCommentLike(c.id)} className={`text-xs flex items-center gap-1 ${liked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}><Heart className="w-3.5 h-3.5" fill={liked ? 'currentColor' : 'none'} />{likeCount > 0 ? likeCount : 'Like'}</button><button onClick={() => { setReplyTo(c); setComment(''); }} className="text-xs text-gray-500 hover:text-purple-600 flex items-center gap-1"><Reply className="w-3.5 h-3.5" />Reply</button></div></div></div></div>; })}
           </div>
           <div className="p-3 border-t">{replyTo && <div className="flex items-center justify-between text-xs text-purple-600 mb-2">Replying to {replyTo.user?.fullName || replyTo.user?.username}<button onClick={() => setReplyTo(null)}><X className="w-4 h-4" /></button></div>}<div className="flex gap-2"><input autoFocus value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addComment()} placeholder={replyTo ? 'Write a reply…' : 'Write a comment…'} className="flex-1 border rounded-full px-4 py-2 text-sm outline-none" /><button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white"><Send className="w-4 h-4" /></button></div></div>
         </div>

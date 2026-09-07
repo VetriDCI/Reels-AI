@@ -25,6 +25,7 @@ model User {
   postViews     PostView[]
   comments      Comment[]
   likes         Like[]
+  commentLikes  CommentLike[]
   followers     Follow[]  @relation("followers")
   following     Follow[]  @relation("following")
   notifications Notification[] @relation("receivedNotifications")
@@ -45,6 +46,7 @@ model Post {
   mediaUrl    String?
   mediaType   String?
   status      String   @default("approved")
+  hidden      Boolean  @default(false)
   viewCount   Int      @default(0)
   postViews   PostView[]
   likes       Like[]
@@ -65,10 +67,23 @@ model Comment {
   postId    String
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   content   String
+  likes     CommentLike[]
   createdAt DateTime @default(now())
 
   @@index([postId])
   @@index([userId])
+}
+
+model CommentLike {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, commentId])
+  @@index([commentId])
 }
 
 model Like {

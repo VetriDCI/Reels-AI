@@ -39,6 +39,7 @@ export default function MePage({ onLogout, onBack }) {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('main');
   const [myPosts, setMyPosts] = useState([]);
+  const [contentFilter, setContentFilter] = useState('all');
 
   useEffect(() => {
     loadUser();
@@ -87,6 +88,22 @@ export default function MePage({ onLogout, onBack }) {
 
   const postsCount = user?.postsCount ?? user?.posts?.length ?? 0;
   const followersCount = user?.followersCount ?? user?.followers?.length ?? 0;
+  const videoCount = myPosts.filter(p => p.mediaType === 'video').length;
+  const photoCount = myPosts.filter(p => p.mediaType === 'image').length;
+  const hiddenCount = myPosts.filter(p => p.hidden).length;
+  const totalViews = myPosts.reduce((sum, p) => sum + (p.viewCount || 0), 0);
+  const totalLikes = myPosts.reduce((sum, p) => sum + (p.likes?.length || 0), 0);
+  const contentFilters = [
+    { key: 'all', label: 'All' },
+    { key: 'video', label: 'Videos' },
+    { key: 'image', label: 'Photos' },
+    { key: 'hidden', label: 'Hidden' },
+  ];
+  const filteredPosts = myPosts.filter(p => {
+    if (contentFilter === 'all') return true;
+    if (contentFilter === 'hidden') return p.hidden;
+    return p.mediaType === contentFilter;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 to-blue-50 pb-24">
@@ -133,9 +150,36 @@ export default function MePage({ onLogout, onBack }) {
           </button>
         </div>
 
-        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">My Posts — Manage</p>
+        <p className="text-xs text-gray-400 uppercase font-semibold mb-2 mt-4">Creator Dashboard</p>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-pink-500 text-xs font-semibold mb-1"><Film className="w-4 h-4" /> VIDEOS</div>
+            <p className="text-2xl font-bold text-gray-800">{videoCount}</p>
+          </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-purple-500 text-xs font-semibold mb-1"><Folder className="w-4 h-4" /> PHOTOS</div>
+            <p className="text-2xl font-bold text-gray-800">{photoCount}</p>
+          </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-blue-500 text-xs font-semibold mb-1"><Eye className="w-4 h-4" /> TOTAL VIEWS</div>
+            <p className="text-2xl font-bold text-gray-800">{totalViews.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-red-500 text-xs font-semibold mb-1"><Users2 className="w-4 h-4" /> TOTAL LIKES</div>
+            <p className="text-2xl font-bold text-gray-800">{totalLikes.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-gray-400 uppercase font-semibold">Manage content{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ''}</p>
+        </div>
+        <div className="flex gap-2 mb-3 overflow-x-auto whitespace-nowrap">
+          {contentFilters.map(f => (
+            <button key={f.key} onClick={() => setContentFilter(f.key)} className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ${contentFilter === f.key ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 border'}`}>{f.label}</button>
+          ))}
+        </div>
         <div className="space-y-4 mb-5">
-          {myPosts.length === 0 ? <div className="bg-white rounded-2xl p-5 text-sm text-gray-500 shadow-sm">You have no posts yet.</div> : myPosts.map(post => <PostCard key={post.id} post={{...post, user}} profileMode onChanged={loadUser} />)}
+          {filteredPosts.length === 0 ? <div className="bg-white rounded-2xl p-5 text-sm text-gray-500 shadow-sm">No content in this category yet.</div> : filteredPosts.map(post => <PostCard key={post.id} post={{...post, user}} profileMode onChanged={loadUser} />)}
         </div>
 
         <p className="text-xs text-gray-400 uppercase font-semibold mb-2">Dashboard Management & Settings</p>

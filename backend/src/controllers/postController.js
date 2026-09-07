@@ -43,7 +43,7 @@ export const getFeed = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const posts = await prisma.post.findMany({
-      where: { status: 'approved' },
+      where: { status: { not: 'rejected' }, hidden: false },
       include: {
         user: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
         likes: { select: { id: true } },
@@ -78,7 +78,7 @@ export const getPostById = async (req, res) => {
       include: {
         user: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
         likes: { include: { user: { select: { id: true, username: true, avatarUrl: true } } } },
-        comments: { include: { user: { select: { id: true, username: true, avatarUrl: true } } }, orderBy: { createdAt: 'desc' } },
+        comments: { include: { user: { select: { id: true, username: true, avatarUrl: true } }, likes: { select: { userId: true } } }, orderBy: { createdAt: 'desc' } },
         hashtags: { include: { hashtag: { select: { name: true } } } }
       }
     });
@@ -131,9 +131,9 @@ export const hidePost = async (req, res) => {
     const post = await prisma.post.findUnique({ where: { id: req.params.id } });
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
     if (post.userId !== req.userId) return res.status(403).json({ success: false, message: 'Not authorized' });
-    const nextStatus = post.status === 'hidden' ? 'approved' : 'hidden';
-    const updated = await prisma.post.update({ where: { id: post.id }, data: { status: nextStatus } });
-    res.json({ success: true, data: { hidden: nextStatus === 'hidden' }, message: nextStatus === 'hidden' ? 'Post hidden' : 'Post restored' });
+    const nextHidden = !post.hidden;
+    const updated = await prisma.post.update({ where: { id: post.id }, data: { hidden: nextHidden } });
+    res.json({ success: true, data: { hidden: nextHidden }, message: nextHidden ? 'Post hidden' : 'Post restored' });
   } catch (error) {
     console.error('Hide post error:', error);
     res.status(500).json({ success: false, message: 'Failed to update post visibility' });
@@ -196,6 +196,37 @@ export const addComment = async (req, res) => {
   } catch (error) {
     console.error('Add comment error:', error);
     res.status(500).json({ success: false, message: 'Failed to add comment' });
+  }
+};
+
+export const likeComment = async (req, res) => {
+  try {
+    const { id: commentId } = req.params;
+    const userId = req.userId;
+
+    const comment = await prisma.comment.findUnique({ where: { id: commentId }, select: { id: true, userId: true, postId: true } });
+    if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
+
+    const existing = await prisma.commentLike.findUnique({
+      where: { userId_commentId: { userId, commentId } }
+    });
+
+    if (existing) {
+      await prisma.commentLike.delete({ where: { userId_commentId: { userId, commentId } } });
+    } else {
+      await prisma.commentLike.create({ data: { userId, commentId } });
+      if (comment.userId !== userId) {
+        await prisma.notification.create({
+          data: { receiverId: comment.userId, senderId: userId, type: 'comment_like', postId: comment.postId, message: 'liked your comment' }
+        });
+      }
+    }
+
+    const likesCount = await prisma.commentLike.count({ where: { commentId } });
+    res.json({ success: true, data: { liked: !existing, likesCount } });
+  } catch (error) {
+    console.error('Like comment error:', error);
+    res.status(500).json({ success: false, message: 'Failed to like comment' });
   }
 };
 

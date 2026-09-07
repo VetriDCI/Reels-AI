@@ -87,7 +87,7 @@ export const getMe = async (req, res) => {
       where: { id: req.userId },
       select: {
         id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, earnings: true, createdAt: true,
-        posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 9 },
+        posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, status: true, hidden: true, viewCount: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 50 },
         followers: { select: { id: true } },
         following: { select: { id: true } }
       }

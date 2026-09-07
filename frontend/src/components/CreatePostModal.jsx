@@ -31,9 +31,22 @@ function CreatePostModal({ onClose, onPostCreated }) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
 
+  // Attach the camera stream once the <video> element for it has actually
+  // mounted (it's conditionally rendered). A one-shot requestAnimationFrame
+  // guess could fire before React committed the element in some browsers,
+  // leaving the Live preview stuck on a blank screen — this effect re-runs
+  // whenever livePreview flips true and always finds the live videoRef.
+  useEffect(() => {
+    if (livePreview && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [livePreview]);
+
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     setLivePreview(false); setLiveState('idle');
   };
 
@@ -47,7 +60,6 @@ function CreatePostModal({ onClose, onPostCreated }) {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
       setLivePreview(true); setLiveState('live');
-      requestAnimationFrame(() => { if (videoRef.current) videoRef.current.srcObject = stream; });
     } catch {
       setCameraError('Camera/microphone permission was denied or is unavailable.');
     }

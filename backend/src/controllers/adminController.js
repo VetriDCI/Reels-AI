@@ -160,6 +160,7 @@ export const getAdminPosts = async (req, res) => {
       likes_count: p.likes.length,
       comments_count: p.comments.length,
       status: p.status,
+      hidden_by_user: p.hidden,
       created_at: p.createdAt,
     }));
 
