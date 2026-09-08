@@ -88,8 +88,7 @@ export const getMe = async (req, res) => {
       select: {
         id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, earnings: true, createdAt: true,
         posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 9 },
-        followers: { select: { id: true } },
-        following: { select: { id: true } }
+        _count: { select: { followers: true, following: true } }
       }
     });
 
@@ -97,9 +96,10 @@ export const getMe = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const { _count, ...rest } = user;
     res.json({
       success: true,
-      data: { ...user, postsCount: user.posts.length, followersCount: user.followers.length, followingCount: user.following.length }
+      data: { ...rest, postsCount: user.posts.length, followersCount: _count.followers, followingCount: _count.following }
     });
   } catch (error) {
     console.error('Get me error:', error);
