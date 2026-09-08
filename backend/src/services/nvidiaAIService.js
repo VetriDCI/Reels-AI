@@ -1,15 +1,28 @@
 import axios from 'axios';
 import { cloudinary } from '../config/cloudinary.js';
 
-// Chat model. Keep the known-invalid legacy value from Render from overriding
-// the working NVIDIA model. Other explicitly configured models are still respected.
-const DEFAULT_CHAT_MODEL = 'openai/gpt-oss-120b';
+// ============================================
+// MODEL CONFIGURATION
+// ============================================
+
+// Chat model
+const DEFAULT_CHAT_MODEL = 'nvidia/openai/gpt-oss-120b';
 const configuredChatModel = (process.env.NVIDIA_MODEL || '').trim();
-const CHAT_MODEL = configuredChatModel && configuredChatModel !== 'meta/llama-3.1-8b-instruct'
-  ? configuredChatModel
+const CHAT_MODEL = configuredChatModel && 
+  configuredChatModel !== 'meta/llama-3.1-8b-instruct' && 
+  configuredChatModel !== 'openai/gpt-oss-120b'
+  ? configuredChatModel 
   : DEFAULT_CHAT_MODEL;
-// Text-to-image model — same NVIDIA_API_KEY, different NVIDIA endpoint (ai.api.nvidia.com).
+
+// Image model
 const IMAGE_MODEL = process.env.NVIDIA_IMAGE_MODEL || 'stabilityai/sdxl-turbo';
+
+// Video model
+const VIDEO_MODEL = process.env.NVIDIA_VIDEO_MODEL || 'nvidia/cosmos-1.0-diffusion-7b';
+
+// ============================================
+// MAIN SERVICE CLASS
+// ============================================
 
 class NvidiaAIService {
   constructor() {
@@ -26,8 +39,6 @@ class NvidiaAIService {
     });
   }
 
-  // Returns a clear error instead of silently trying (and failing) an API
-  // call when the key hasn't actually been configured yet.
   _keyMissing() {
     if (!this.apiKey || this.apiKey.includes('your-nvidia') || this.apiKey === 'nvapi-your-nvidia-api-key') {
       return 'NVIDIA_API_KEY is not set on the backend yet — add your real key in Render → Environment, then redeploy.';
@@ -35,16 +46,26 @@ class NvidiaAIService {
     return null;
   }
 
-  // Extracts NVIDIA's actual error message so failures are debuggable
-  // instead of a generic "failed" message with no explanation.
   _extractError(error) {
-    const detail = error.response?.data?.detail || error.response?.data?.error?.message || error.response?.data?.message;
+    const detail = error.response?.data?.detail || 
+                   error.response?.data?.error?.message || 
+                   error.response?.data?.message;
+    
     if (detail) return detail;
-    if (error.response?.status === 404) return `NVIDIA API returned 404 — check that the model id ("${CHAT_MODEL}") is correct and still available on build.nvidia.com`;
+    
+    if (error.response?.status === 404) {
+      return `NVIDIA API returned 404 — model not found. Check model ID on build.nvidia.com`;
+    }
+    
     if (error.response?.status) return `NVIDIA API returned ${error.response.status}`;
     if (error.code === 'ECONNABORTED') return 'NVIDIA API request timed out';
+    
     return error.message || 'Unknown error contacting NVIDIA API';
   }
+
+  // ============================================
+  // 1. CHAT
+  // ============================================
 
   async chatWithAI(userMessage, context = '') {
     const keyError = this._keyMissing();
@@ -70,18 +91,22 @@ class NvidiaAIService {
       return { success: true, response: response.data.choices[0].message.content.trim() };
     } catch (error) {
       const msg = this._extractError(error);
-      console.error('NVIDIA chat error:', msg);
+      console.error('❌ NVIDIA chat error:', msg);
       return { success: false, error: msg };
     }
   }
 
-  // Text-to-image via NVIDIA's hosted GenAI endpoint, uploaded to Cloudinary
-  // (same media host as the rest of the app) so the URL survives redeploys.
+  // ============================================
+  // 2. IMAGE GENERATION
+  // ============================================
+
   async generateImage(prompt) {
     const keyError = this._keyMissing();
     if (keyError) return { success: false, error: keyError };
 
     try {
+      console.log(`🖼️ Generating image with model: ${IMAGE_MODEL}`);
+      
       const response = await axios.post(
         `https://ai.api.nvidia.com/v1/genai/${IMAGE_MODEL}`,
         {
@@ -101,7 +126,9 @@ class NvidiaAIService {
       );
 
       const b64 = response.data?.artifacts?.[0]?.base64;
-      if (!b64) return { success: false, error: 'NVIDIA image API returned no image data.' };
+      if (!b64) {
+        return { success: false, error: 'NVIDIA image API returned no image data.' };
+      }
 
       const upload = await cloudinary.uploader.upload(`data:image/jpeg;base64,${b64}`, {
         folder: 'ra-social/ai-images',
@@ -109,13 +136,158 @@ class NvidiaAIService {
       });
 
       return { success: true, imageUrl: upload.secure_url };
+      
     } catch (error) {
       const status = error.response?.status;
       const detail = error.response?.data?.detail || error.response?.data?.message;
       const msg = status === 404
         ? `NVIDIA API returned 404 — the model ("${IMAGE_MODEL}") may need separate access approval on build.nvidia.com`
         : (detail || (status ? `NVIDIA API returned ${status}` : (error.message || 'Image generation failed')));
-      console.error('NVIDIA image generation error:', msg);
+      
+      console.error('❌ NVIDIA image generation error:', msg);
+      return { success: false, error: msg };
+    }
+  }
+
+  // ============================================
+  // 3. VIDEO GENERATION
+  // ============================================
+
+  async generateVideo(prompt, options = {}) {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, error: keyError };
+
+    try {
+      console.log(`🎬 Generating video with model: ${VIDEO_MODEL}`);
+      console.log(`📝 Prompt: ${prompt}`);
+
+      const params = {
+        prompt: prompt,
+        video_length: options.videoLength || 3,
+        resolution: options.resolution || '720p',
+        fps: options.fps || 24,
+        seed: options.seed || Math.floor(Math.random() * 1000000)
+      };
+
+      const response = await axios.post(
+        `https://ai.api.nvidia.com/v1/genai/${VIDEO_MODEL}`,
+        params,
+        {
+          timeout: 120000,
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const videoBase64 = response.data?.video?.base64 || 
+                         response.data?.artifacts?.[0]?.base64 ||
+                         response.data?.output?.base64;
+
+      if (!videoBase64) {
+        return { success: false, error: 'NVIDIA video API returned no video data.' };
+      }
+
+      const uploadResult = await cloudinary.uploader.upload(
+        `data:video/mp4;base64,${videoBase64}`,
+        {
+          folder: 'ra-social/ai-videos',
+          resource_type: 'video',
+          public_id: `video_${Date.now()}`
+        }
+      );
+
+      return { 
+        success: true, 
+        videoUrl: uploadResult.secure_url,
+        duration: uploadResult.duration || params.video_length,
+        format: uploadResult.format || 'mp4'
+      };
+      
+    } catch (error) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail || error.response?.data?.message;
+      
+      let msg;
+      if (status === 404) {
+        msg = `NVIDIA API returned 404 — the video model ("${VIDEO_MODEL}") may need separate access approval on build.nvidia.com.`;
+      } else if (status === 402) {
+        msg = 'NVIDIA API returned 402 — Payment required. Video generation may need credits or subscription.';
+      } else if (status === 429) {
+        msg = 'NVIDIA API returned 429 — Rate limit exceeded. Please try again later.';
+      } else {
+        msg = detail || (status ? `NVIDIA API returned ${status}` : (error.message || 'Video generation failed'));
+      }
+      
+      console.error('❌ NVIDIA video generation error:', msg);
+      return { success: false, error: msg };
+    }
+  }
+
+  // ============================================
+  // 4. VIDEO FROM IMAGE
+  // ============================================
+
+  async generateVideoFromImage(imageUrl, prompt, options = {}) {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, error: keyError };
+
+    try {
+      console.log(`🎬 Generating video from image: ${imageUrl}`);
+      
+      const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+      const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
+
+      const params = {
+        image: imageBase64,
+        prompt: prompt,
+        video_length: options.videoLength || 3,
+        resolution: options.resolution || '720p',
+        fps: options.fps || 24,
+        seed: options.seed || Math.floor(Math.random() * 1000000)
+      };
+
+      const response = await axios.post(
+        `https://ai.api.nvidia.com/v1/genai/${VIDEO_MODEL}`,
+        params,
+        {
+          timeout: 120000,
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const videoBase64 = response.data?.video?.base64 || 
+                         response.data?.artifacts?.[0]?.base64 ||
+                         response.data?.output?.base64;
+
+      if (!videoBase64) {
+        return { success: false, error: 'NVIDIA video API returned no video data.' };
+      }
+
+      const uploadResult = await cloudinary.uploader.upload(
+        `data:video/mp4;base64,${videoBase64}`,
+        {
+          folder: 'ra-social/ai-videos',
+          resource_type: 'video',
+          public_id: `video_from_image_${Date.now()}`
+        }
+      );
+
+      return { 
+        success: true, 
+        videoUrl: uploadResult.secure_url,
+        duration: uploadResult.duration || params.video_length
+      };
+      
+    } catch (error) {
+      const msg = this._extractError(error);
+      console.error('❌ NVIDIA video from image error:', msg);
       return { success: false, error: msg };
     }
   }
