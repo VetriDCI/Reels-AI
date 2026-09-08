@@ -5,7 +5,7 @@ import { cloudinary } from '../config/cloudinary.js';
 // MODEL CONFIGURATION
 // ============================================
 
-const DEFAULT_CHAT_MODEL = 'nvidia/llama-3.1-nemotron-70b-instruct';  // ✅ Fixed spelling
+const DEFAULT_CHAT_MODEL = 'meta/llama-3.1-8b-instruct';
 const configuredChatModel = (process.env.NVIDIA_MODEL || '').trim();
 
 const CHAT_MODEL = configuredChatModel &&
@@ -14,7 +14,7 @@ const CHAT_MODEL = configuredChatModel &&
     ? configuredChatModel
     : DEFAULT_CHAT_MODEL;
 
-const IMAGE_MODEL = process.env.NVIDIA_IMAGE_MODEL || 'stabilityai/sdxl-turbo';
+const IMAGE_MODEL = process.env.NVIDIA_IMAGE_MODEL || 'stabilityai/sdxl-turbo';  // ✅ Fixed
 const VIDEO_MODEL = process.env.NVIDIA_VIDEO_MODEL || 'nvidia/cosmos-1.0-diffusion-7b';
 
 // ============================================
@@ -51,7 +51,7 @@ class NvidiaAIService {
         if (detail) return detail;
 
         if (error.response?.status === 404) {
-            return `NVIDIA API returned 404 — model "${CHAT_MODEL}" not found. Try: nvidia/llama-3.1-nemotron-70b-instruct`;
+            return `NVIDIA API returned 404 — model "${CHAT_MODEL}" not found. Try: meta/llama-3.1-8b-instruct`;
         }
 
         if (error.response?.status) return `NVIDIA API returned ${error.response.status}`;
