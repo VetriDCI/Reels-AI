@@ -5,7 +5,7 @@ import { cloudinary } from '../config/cloudinary.js';
 // MODEL CONFIGURATION
 // ============================================
 
-// Chat model
+// Chat model - Fixed with nvidia/ prefix
 const DEFAULT_CHAT_MODEL = 'nvidia/openai/gpt-oss-120b';
 const configuredChatModel = (process.env.NVIDIA_MODEL || '').trim();
 const CHAT_MODEL = configuredChatModel && 
@@ -39,6 +39,10 @@ class NvidiaAIService {
     });
   }
 
+  // ============================================
+  // HELPER FUNCTIONS
+  // ============================================
+
   _keyMissing() {
     if (!this.apiKey || this.apiKey.includes('your-nvidia') || this.apiKey === 'nvapi-your-nvidia-api-key') {
       return 'NVIDIA_API_KEY is not set on the backend yet — add your real key in Render → Environment, then redeploy.';
@@ -54,7 +58,7 @@ class NvidiaAIService {
     if (detail) return detail;
     
     if (error.response?.status === 404) {
-      return `NVIDIA API returned 404 — model not found. Check model ID on build.nvidia.com`;
+      return `NVIDIA API returned 404 — model "${CHAT_MODEL}" not found. Try: nvidia/openai/gpt-oss-120b or nvidia/llama-3.1-nemotron-70b-instruct`;
     }
     
     if (error.response?.status) return `NVIDIA API returned ${error.response.status}`;
@@ -64,7 +68,7 @@ class NvidiaAIService {
   }
 
   // ============================================
-  // 1. CHAT
+  // 1. CHAT FUNCTION
   // ============================================
 
   async chatWithAI(userMessage, context = '') {
@@ -72,6 +76,8 @@ class NvidiaAIService {
     if (keyError) return { success: false, error: keyError };
 
     try {
+      console.log(`🤖 Using chat model: ${CHAT_MODEL}`);
+      
       const response = await this.client.post('/chat/completions', {
         model: CHAT_MODEL,
         messages: [
@@ -150,7 +156,7 @@ class NvidiaAIService {
   }
 
   // ============================================
-  // 3. VIDEO GENERATION
+  // 3. VIDEO GENERATION (NEW!)
   // ============================================
 
   async generateVideo(prompt, options = {}) {
@@ -227,7 +233,7 @@ class NvidiaAIService {
   }
 
   // ============================================
-  // 4. VIDEO FROM IMAGE
+  // 4. VIDEO FROM IMAGE (NEW!)
   // ============================================
 
   async generateVideoFromImage(imageUrl, prompt, options = {}) {
