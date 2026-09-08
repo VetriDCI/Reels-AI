@@ -1,8 +1,13 @@
 import axios from 'axios';
 import { cloudinary } from '../config/cloudinary.js';
 
-// Chat model — override with NVIDIA_MODEL if you want a different one.
-const CHAT_MODEL = process.env.NVIDIA_MODEL || 'openai/gpt-oss-120b';
+// Chat model. Keep the known-invalid legacy value from Render from overriding
+// the working NVIDIA model. Other explicitly configured models are still respected.
+const DEFAULT_CHAT_MODEL = 'openai/gpt-oss-120b';
+const configuredChatModel = (process.env.NVIDIA_MODEL || '').trim();
+const CHAT_MODEL = configuredChatModel && configuredChatModel !== 'meta/llama-3.1-8b-instruct'
+  ? configuredChatModel
+  : DEFAULT_CHAT_MODEL;
 // Text-to-image model — same NVIDIA_API_KEY, different NVIDIA endpoint (ai.api.nvidia.com).
 const IMAGE_MODEL = process.env.NVIDIA_IMAGE_MODEL || 'stabilityai/sdxl-turbo';
 
