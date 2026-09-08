@@ -19,3 +19,10 @@
 - Backend syntax checks passed.
 
 Note: frontend production build could not be executed in this environment because npm dependencies were not available in the local cache and registry installation timed out.
+
+## AI simplification (Super AI merge)
+- Removed the unused multi-feature AI grid (`AIFeatures.jsx`, `services/aiApi.js`) and its backend endpoints (`generate-caption`, `generate-hashtags`, `translate`, `moderate`) — none of these were wired into the live app.
+- The "AI" tab's chat (`App.jsx` → `AIChatFeature`) now uses the same fixed NVIDIA setup as Super AI Studio:
+  - Fixed chat model bug (was `meta/llama-3.1-8b-instruct`, which was returning 404) → now `openai/gpt-oss-120b` via `NVIDIA_MODEL` env var.
+  - Added AI image generation: type `/image <prompt>` in the AI chat to generate an image (NVIDIA `stabilityai/sdxl-turbo`, uploaded to Cloudinary, same `NVIDIA_API_KEY`).
+- New optional env vars (Render → Environment): `NVIDIA_MODEL` (default `openai/gpt-oss-120b`), `NVIDIA_IMAGE_MODEL` (default `stabilityai/sdxl-turbo`). `NVIDIA_API_KEY` must already be set.

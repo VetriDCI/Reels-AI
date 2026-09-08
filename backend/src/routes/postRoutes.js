@@ -5,7 +5,6 @@ import {
   getPostById,
   likePost,
   addComment,
-  likeComment,
   deletePost,
   viewPost,
   hidePost
@@ -49,6 +48,5 @@ router.patch('/:id/hide', protect, hidePost);
 router.post('/:id/view', protect, viewPost);
 router.post('/:id/like', protect, likePost);
 router.post('/:id/comments', protect, addComment);
-router.post('/comments/:id/like', protect, likeComment);
 
 export default router;

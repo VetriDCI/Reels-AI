@@ -42,17 +42,13 @@ export const postAPI = {
   hide: (id) => api.patch(`/posts/${id}/hide`),
   like: (id) => api.post(`/posts/${id}/like`),
   addComment: (id, content) => api.post(`/posts/${id}/comments`, { content }),
-  likeComment: (id) => api.post(`/posts/comments/${id}/like`),
   view: (id) => api.post(`/posts/${id}/view`),
   download: (id) => `${API_URL}/posts/${id}/download`
 };
 
 export const aiAPI = {
-  generateCaption: (data) => api.post('/ai/generate-caption', data),
-  generateHashtags: (data) => api.post('/ai/generate-hashtags', data),
-  translate: (data) => api.post('/ai/translate', data),
-  moderate: (data) => api.post('/ai/moderate', data),
-  chat: (data) => api.post('/ai/chat', data)
+  chat: (data) => api.post('/ai/chat', data),
+  generateImage: (data) => api.post('/ai/image', data)
 };
 
 export const searchAPI = {

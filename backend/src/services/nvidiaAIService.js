@@ -1,6 +1,10 @@
 import axios from 'axios';
+import { cloudinary } from '../config/cloudinary.js';
 
-const MODEL = 'meta/llama-3.1-8b-instruct';
+// Chat model — override with NVIDIA_MODEL if you want a different one.
+const CHAT_MODEL = process.env.NVIDIA_MODEL || 'openai/gpt-oss-120b';
+// Text-to-image model — same NVIDIA_API_KEY, different NVIDIA endpoint (ai.api.nvidia.com).
+const IMAGE_MODEL = process.env.NVIDIA_IMAGE_MODEL || 'stabilityai/sdxl-turbo';
 
 class NvidiaAIService {
   constructor() {
@@ -31,127 +35,10 @@ class NvidiaAIService {
   _extractError(error) {
     const detail = error.response?.data?.detail || error.response?.data?.error?.message || error.response?.data?.message;
     if (detail) return detail;
+    if (error.response?.status === 404) return `NVIDIA API returned 404 — check that the model id ("${CHAT_MODEL}") is correct and still available on build.nvidia.com`;
     if (error.response?.status) return `NVIDIA API returned ${error.response.status}`;
     if (error.code === 'ECONNABORTED') return 'NVIDIA API request timed out';
     return error.message || 'Unknown error contacting NVIDIA API';
-  }
-
-  async generateCaption(imageUrl, context = '') {
-    const keyError = this._keyMissing();
-    if (keyError) return { success: false, error: keyError };
-
-    try {
-      const response = await this.client.post('/chat/completions', {
-        model: MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a creative social media assistant. Generate engaging, short captions for social media posts. Use emojis and keep it under 150 characters.'
-          },
-          {
-            role: 'user',
-            content: `Generate a catchy social media caption for this: ${context}. Image URL: ${imageUrl}`
-          }
-        ],
-        max_tokens: 150,
-        temperature: 0.7
-      });
-
-      return { success: true, caption: response.data.choices[0].message.content.trim() };
-    } catch (error) {
-      const msg = this._extractError(error);
-      console.error('NVIDIA caption generation error:', msg);
-      return { success: false, error: msg };
-    }
-  }
-
-  async generateHashtags(content) {
-    const keyError = this._keyMissing();
-    if (keyError) return { success: false, error: keyError };
-
-    try {
-      const response = await this.client.post('/chat/completions', {
-        model: MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a social media expert. Generate 5-10 relevant, trending hashtags for social media posts. Return only hashtags, no explanations.'
-          },
-          {
-            role: 'user',
-            content: `Generate hashtags for this post: ${content}`
-          }
-        ],
-        max_tokens: 200,
-        temperature: 0.6
-      });
-
-      const hashtagsText = response.data.choices[0].message.content.trim();
-      const hashtags = hashtagsText.match(/#\w+/g) || [];
-
-      return { success: true, hashtags: hashtags.slice(0, 10) };
-    } catch (error) {
-      const msg = this._extractError(error);
-      console.error('NVIDIA hashtag generation error:', msg);
-      return { success: false, error: msg };
-    }
-  }
-
-  async translateText(text, targetLanguage = 'ta') {
-    const keyError = this._keyMissing();
-    if (keyError) return { success: false, error: keyError };
-
-    try {
-      const languages = { ta: 'Tamil', hi: 'Hindi', en: 'English', es: 'Spanish', fr: 'French' };
-
-      const response = await this.client.post('/chat/completions', {
-        model: MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: `You are a professional translator. Translate the following text to ${languages[targetLanguage] || 'English'}. Keep the tone natural and conversational.`
-          },
-          { role: 'user', content: text }
-        ],
-        max_tokens: 500,
-        temperature: 0.3
-      });
-
-      return { success: true, translatedText: response.data.choices[0].message.content.trim() };
-    } catch (error) {
-      const msg = this._extractError(error);
-      console.error('NVIDIA translation error:', msg);
-      return { success: false, error: msg };
-    }
-  }
-
-  async moderateContent(content) {
-    const keyError = this._keyMissing();
-    if (keyError) return { success: false, isSafe: true, error: keyError };
-
-    try {
-      const response = await this.client.post('/chat/completions', {
-        model: MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a content moderation assistant. Analyze this content and determine if it contains hate speech, harassment, violence, or inappropriate material. Return JSON: { safe: boolean, reason: string }'
-          },
-          { role: 'user', content }
-        ],
-        max_tokens: 100,
-        temperature: 0.2
-      });
-
-      const analysis = response.data.choices[0].message.content.trim();
-      const isSafe = !analysis.toLowerCase().includes('unsafe') && !analysis.toLowerCase().includes('inappropriate');
-
-      return { success: true, isSafe, reason: analysis };
-    } catch (error) {
-      const msg = this._extractError(error);
-      console.error('NVIDIA moderation error:', msg);
-      return { success: false, isSafe: true, error: msg };
-    }
   }
 
   async chatWithAI(userMessage, context = '') {
@@ -160,7 +47,7 @@ class NvidiaAIService {
 
     try {
       const response = await this.client.post('/chat/completions', {
-        model: MODEL,
+        model: CHAT_MODEL,
         messages: [
           {
             role: 'system',
@@ -179,6 +66,51 @@ class NvidiaAIService {
     } catch (error) {
       const msg = this._extractError(error);
       console.error('NVIDIA chat error:', msg);
+      return { success: false, error: msg };
+    }
+  }
+
+  // Text-to-image via NVIDIA's hosted GenAI endpoint, uploaded to Cloudinary
+  // (same media host as the rest of the app) so the URL survives redeploys.
+  async generateImage(prompt) {
+    const keyError = this._keyMissing();
+    if (keyError) return { success: false, error: keyError };
+
+    try {
+      const response = await axios.post(
+        `https://ai.api.nvidia.com/v1/genai/${IMAGE_MODEL}`,
+        {
+          text_prompts: [{ text: prompt }],
+          seed: 0,
+          sampler: 'K_EULER_ANCESTRAL',
+          steps: 4
+        },
+        {
+          timeout: 60000,
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const b64 = response.data?.artifacts?.[0]?.base64;
+      if (!b64) return { success: false, error: 'NVIDIA image API returned no image data.' };
+
+      const upload = await cloudinary.uploader.upload(`data:image/jpeg;base64,${b64}`, {
+        folder: 'ra-social/ai-images',
+        resource_type: 'image'
+      });
+
+      return { success: true, imageUrl: upload.secure_url };
+    } catch (error) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail || error.response?.data?.message;
+      const msg = status === 404
+        ? `NVIDIA API returned 404 — the model ("${IMAGE_MODEL}") may need separate access approval on build.nvidia.com`
+        : (detail || (status ? `NVIDIA API returned ${status}` : (error.message || 'Image generation failed')));
+      console.error('NVIDIA image generation error:', msg);
       return { success: false, error: msg };
     }
   }

@@ -3,7 +3,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import authRoutes from './routes/authRoutes.js';
 import postRoutes from './routes/postRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
@@ -14,6 +13,7 @@ import followRoutes from './routes/followRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import prisma from './config/database.js';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -60,10 +60,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Socket connections must present the same JWT used for REST calls.
-// Without this, any client could connect anonymously and — since
-// join_chat had no membership check either — join and read the messages
-// of ANY chat by just knowing/guessing its id.
 io.use((socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -72,7 +68,7 @@ io.use((socket, next) => {
     socket.userId = decoded.userId;
     next();
   } catch {
-    next(new Error('Invalid or expired token'));
+    next(new Error('Invalid token'));
   }
 });
 
@@ -80,23 +76,17 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('join_chat', async (chatId) => {
-    if (!chatId) return;
-    // Only let the socket join a chat room if this user is genuinely a
-    // participant of that chat — otherwise anyone could read anyone
-    // else's private messages just by emitting a chat id.
-    const chat = await prisma.chat.findFirst({
-      where: { id: chatId, participants: { some: { id: socket.userId } } },
-      select: { id: true }
-    });
-    if (chat) socket.join(`chat:${chatId}`);
+    try {
+      if (!chatId) return;
+      const chat = await prisma.chat.findUnique({
+        where: { id: chatId },
+        select: { participants: { where: { id: socket.userId }, select: { id: true } } }
+      });
+      if (chat?.participants?.length) socket.join(`chat:${chatId}`);
+    } catch (error) {
+      console.error('Socket chat join error:', error.message);
+    }
   });
-
-  // Note: there is intentionally no client-triggered "send_message" socket
-  // handler. Messages are only ever created via the authenticated
-  // POST /api/chats/:chatId/messages endpoint, which persists them and then
-  // emits "new_message" itself (see chatController.sendMessage). A raw
-  // socket broadcast handler here would let any connected client inject
-  // fake, unpersisted messages into any chat room with no validation.
 
   socket.on('disconnect', () => { console.log('User disconnected:', socket.id); });
 });

@@ -219,7 +219,7 @@ function AIChatFeature() {
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
 
-  const suggestions = ['Create viral reel idea', 'Tamil caption for my post', 'Trending hashtags', 'Growth tips'];
+  const suggestions = ['Create viral reel idea', 'Tamil caption for my post', 'Trending hashtags', 'Growth tips', '/image a cat wearing a hat'];
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -231,9 +231,16 @@ function AIChatFeature() {
     setMessages((prev) => [...prev, { role: 'user', text: msg }]);
     setInput('');
     setLoading(true);
+
+    const imageMatch = msg.trim().match(/^\/(?:image|img)\s+(.+)$/is);
     try {
-      const res = await aiAPI.chat({ message: msg });
-      setMessages((prev) => [...prev, { role: 'ai', text: res.data.data.response }]);
+      if (imageMatch) {
+        const res = await aiAPI.generateImage({ prompt: imageMatch[1].trim() });
+        setMessages((prev) => [...prev, { role: 'ai', text: "Here's your generated image:", image: res.data.data.imageUrl }]);
+      } else {
+        const res = await aiAPI.chat({ message: msg });
+        setMessages((prev) => [...prev, { role: 'ai', text: res.data.data.response }]);
+      }
     } catch (err) {
       const detail = err.response?.data?.message || 'Please try again in a moment.';
       setMessages((prev) => [...prev, { role: 'ai', text: `⚠️ Sorry, I couldn't respond. ${detail}` }]);
@@ -261,6 +268,9 @@ function AIChatFeature() {
               }`}
             >
               {m.text}
+              {m.image && (
+                <img src={m.image} alt="Generated" className="mt-2 rounded-xl max-w-full" />
+              )}
             </div>
           </div>
         ))}
@@ -292,7 +302,7 @@ function AIChatFeature() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Ask Super AI..."
+            placeholder="Ask Super AI... (try /image ...)"
             className="flex-1 outline-none text-sm"
           />
           <button onClick={() => sendMessage()} disabled={loading} className="w-9 h-9 rounded-full bg-gradient-to-r from-pink-500 to-blue-500 flex items-center justify-center">
