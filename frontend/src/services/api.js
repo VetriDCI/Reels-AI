@@ -21,7 +21,8 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getMe: () => api.get('/auth/me'),
-  updateProfile: (data) => api.put('/auth/profile', data)
+  updateProfile: (data) => api.put('/auth/profile', data),
+  createChannel: (channelName) => api.post('/auth/channel', { channelName })
 };
 
 export const uploadAPI = {
@@ -49,6 +50,11 @@ export const postAPI = {
 export const aiAPI = {
   chat: (data) => api.post('/ai/chat', data),
   generateImage: (data) => api.post('/ai/image', data)
+};
+
+export const monetizationAPI = {
+  status: () => api.get('/monetization/status'),
+  apply: () => api.post('/monetization/apply')
 };
 
 export const searchAPI = {

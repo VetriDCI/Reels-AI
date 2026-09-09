@@ -257,3 +257,58 @@ export const updateUserStatus = async (req, res) => {
     res.status(500).json({ error: 'Failed to update user status' });
   }
 };
+
+
+// GET /api/admin/monetization
+export const getMonetizationApplications = async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { monetizationStatus: 'pending' },
+      orderBy: { monetizationAppliedAt: 'asc' },
+      select: {
+        id: true, username: true, fullName: true, email: true,
+        monetizationStatus: true, monetizationAppliedAt: true,
+        _count: { select: { followers: true, posts: true } },
+      },
+    });
+    res.json(users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      full_name: u.fullName,
+      email: u.email,
+      status: u.monetizationStatus,
+      applied_at: u.monetizationAppliedAt,
+      followers: u._count.followers,
+      posts: u._count.posts,
+    })));
+  } catch (error) {
+    console.error('Admin monetization applications error:', error);
+    res.status(500).json({ error: 'Failed to fetch monetization applications' });
+  }
+};
+
+// PATCH /api/admin/monetization/:id
+export const updateMonetizationApplication = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be "approved" or "rejected"' });
+    }
+
+    const data = {
+      monetizationStatus: status === 'approved' ? 'approved' : 'not_eligible',
+      ...(status === 'approved' ? { monetizationApprovedAt: new Date() } : { monetizationApprovedAt: null }),
+    };
+
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data,
+      select: { id: true, username: true, monetizationStatus: true, monetizationApprovedAt: true },
+    });
+
+    res.json(user);
+  } catch (error) {
+    console.error('Update monetization application error:', error);
+    res.status(500).json({ error: 'Failed to update monetization application' });
+  }
+};

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Heart, MessageSquare, Share2, Send, X, Eye, Download, MoreHorizontal, Link2, Flag, Play, ExternalLink, Reply } from 'lucide-react';
+import { Heart, MessageSquare, Share2, Send, X, Eye, Download, MoreHorizontal, Link2, Flag, Play, ExternalLink, Reply, ChevronDown } from 'lucide-react';
 import { postAPI, followAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
@@ -14,11 +14,13 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
   const [sharing, setSharing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [following, setFollowing] = useState(false);
+  const [following, setFollowing] = useState(Boolean(post._following || post.following));
+  const [joinMenuOpen, setJoinMenuOpen] = useState(false);
   const [views, setViews] = useState(post.viewCount || 0);
   const menuRef = useRef(null);
 
   useEffect(() => setViews(post.viewCount || 0), [post.viewCount]);
+  useEffect(() => setFollowing(Boolean(post._following || post.following)), [post._following, post.following]);
   useEffect(() => {
     const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
     document.addEventListener('pointerdown', close);
@@ -27,7 +29,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
 
   const handleFollow = async () => {
     if (!post.user?.id || post.user.id === user?.id) return;
-    try { const res = await followAPI.follow(post.user.id); setFollowing(Boolean(res.data.data.following)); } catch (err) { console.error(err); }
+    try { const res = await followAPI.follow(post.user.id); setFollowing(Boolean(res.data.data.following)); setJoinMenuOpen(false); } catch (err) { console.error(err); }
   };
   const recordView = async () => { try { const res = await postAPI.view(post.id); if (typeof res.data.data?.viewCount === 'number') setViews(res.data.data.viewCount); } catch {} };
   const handleDelete = async () => {
@@ -71,7 +73,20 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-gray-900 truncate">{post.user?.fullName || post.user?.username}</h3>
-              {post.user?.id !== user?.id && <button onClick={handleFollow} className={`px-5 py-2 rounded-full text-sm font-semibold ${following ? 'bg-gray-100 text-gray-600' : 'bg-purple-600 text-white'}`}>{following ? 'Joined' : 'Join'}</button>}
+              {post.user?.id !== user?.id && <div className="flex items-center gap-1 shrink-0">
+                {!following ? (
+                  <button onClick={handleFollow} className="px-5 py-2 rounded-full text-sm font-semibold bg-purple-600 text-white">Join</button>
+                ) : (
+                  <div className="relative flex items-center">
+                    <button onClick={() => setJoinMenuOpen(v => !v)} className="px-4 py-2 rounded-l-full text-sm font-semibold bg-gray-100 text-gray-700" aria-expanded={joinMenuOpen}>Joined</button>
+                    <button onClick={() => setJoinMenuOpen(v => !v)} className="p-2 rounded-r-full bg-gray-100 text-gray-700 border-l border-white" aria-label="Joined options" aria-expanded={joinMenuOpen}><ChevronDown className="w-4 h-4" /></button>
+                    {joinMenuOpen && <div className="absolute left-0 top-11 z-[65] w-32 bg-white rounded-xl shadow-xl border py-1">
+                      <button onClick={handleFollow} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">Unjoin</button>
+                    </div>}
+                  </div>
+                )}
+                <button onClick={recordView} className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200" aria-label="Views"><Eye className="w-4 h-4" /><span>{views.toLocaleString()}</span></button>
+              </div>}
             </div>
             <p className="text-sm text-gray-500">@{post.user?.username}</p>
           </div>
@@ -90,13 +105,12 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
       </div>}
 
       <div className="flex items-center gap-1.5 px-3 py-3 border-t overflow-x-auto whitespace-nowrap">
-        <button onClick={recordView} className="action-btn"><Eye className="w-5 h-5" /><span>{views.toLocaleString()}</span></button>
         <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
         <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
         <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
         {post.mediaUrl && <button onClick={handleDownload} disabled={downloading} className="action-btn hover:text-purple-600 disabled:opacity-50"><Download className="w-5 h-5" /><span>{downloading ? 'Saving…' : 'Download'}</span></button>}
         <div ref={menuRef} className="relative shrink-0 ml-auto">
-          <button onClick={() => setMenuOpen(v => !v)} className="action-btn" aria-expanded={menuOpen}><MoreHorizontal className="w-5 h-5" /><span>More</span></button>
+          <button onClick={() => setMenuOpen(v => !v)} className="action-btn" aria-expanded={menuOpen} aria-label="More options"><MoreHorizontal className="w-5 h-5" /></button>
           {menuOpen && <div className="absolute right-0 bottom-10 z-[60] w-52 bg-white rounded-xl shadow-2xl border py-1">
             {post.mediaUrl && <button onClick={saveToApp} className="menu-item"><Download className="w-4 h-4" />Save to app</button>}
             {post.mediaUrl && <button onClick={() => { window.open(post.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuOpen(false); }} className="menu-item"><ExternalLink className="w-4 h-4" />Open media</button>}

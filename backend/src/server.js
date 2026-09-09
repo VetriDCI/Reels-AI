@@ -11,6 +11,7 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import followRoutes from './routes/followRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import monetizationRoutes from './routes/monetizationRoutes.js';
 import prisma from './config/database.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -50,6 +51,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/follow', followRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/monetization', monetizationRoutes);
 app.set('io', io);
 
 app.get('/api/health', (req, res) => {

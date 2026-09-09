@@ -20,6 +20,12 @@ model User {
   role          String    @default("user")
   status        String    @default("active")
   earnings      Float     @default(0)
+  monetizationStatus String @default("not_eligible")
+  monetizationAppliedAt DateTime?
+  monetizationApprovedAt DateTime?
+  channelNumber String? @unique
+  channelName String?
+  channelCreatedAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   posts         Post[]

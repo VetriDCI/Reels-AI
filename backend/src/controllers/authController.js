@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import prisma from '../config/database.js';
 
 export const register = async (req, res) => {
@@ -86,7 +87,9 @@ export const getMe = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
       select: {
-        id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, earnings: true, createdAt: true,
+        id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, earnings: true,
+        monetizationStatus: true, monetizationAppliedAt: true, monetizationApprovedAt: true, createdAt: true,
+        channelNumber: true, channelName: true, channelCreatedAt: true,
         posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 9 },
         _count: { select: { followers: true, following: true } }
       }
@@ -263,5 +266,43 @@ export const changePassword = async (req, res) => {
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ success: false, message: 'Failed to change password' });
+  }
+};
+
+// POST /api/auth/channel - create one creator channel for the logged-in user
+export const createChannel = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true, fullName: true, channelNumber: true, channelName: true, channelCreatedAt: true }
+    });
+
+    if (!existing) return res.status(404).json({ success: false, message: 'User not found' });
+    if (existing.channelNumber) {
+      return res.status(409).json({ success: false, message: 'You already have a creator channel', data: existing });
+    }
+
+    let channelNumber;
+    for (let i = 0; i < 10; i += 1) {
+      const candidate = `RA-${crypto.randomInt(10000000, 100000000)}`;
+      const taken = await prisma.user.findUnique({ where: { channelNumber: candidate }, select: { id: true } });
+      if (!taken) { channelNumber = candidate; break; }
+    }
+    if (!channelNumber) {
+      return res.status(500).json({ success: false, message: 'Could not generate a channel number. Please try again.' });
+    }
+
+    const channelName = (req.body?.channelName || existing.fullName || existing.username || 'My Channel').trim().slice(0, 80);
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { channelNumber, channelName, channelCreatedAt: new Date() },
+      select: { id: true, username: true, fullName: true, channelNumber: true, channelName: true, channelCreatedAt: true }
+    });
+
+    res.status(201).json({ success: true, message: 'Creator channel created successfully', data: updated });
+  } catch (error) {
+    console.error('Create channel error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create creator channel' });
   }
 };
