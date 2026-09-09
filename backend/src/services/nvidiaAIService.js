@@ -5,11 +5,11 @@ import { cloudinary } from '../config/cloudinary.js';
 // MODEL CONFIGURATION
 // ============================================
 
-const DEFAULT_CHAT_MODEL = 'openai/gpt-oss-120b';
-const BROKEN_CHAT_MODEL = 'meta/llama-3.1-8b-instruct';
+const DEFAULT_CHAT_MODEL = 'meta/llama-3.3-70b-instruct';
+const BROKEN_CHAT_MODELS = ['meta/llama-3.1-8b-instruct', 'openai/gpt-oss-120b'];
 const configuredChatModel = (process.env.NVIDIA_MODEL || '').trim();
 
-const CHAT_MODEL = (configuredChatModel && configuredChatModel !== BROKEN_CHAT_MODEL)
+const CHAT_MODEL = (configuredChatModel && !BROKEN_CHAT_MODELS.includes(configuredChatModel))
     ? configuredChatModel
     : DEFAULT_CHAT_MODEL;
 
@@ -50,7 +50,7 @@ class NvidiaAIService {
         if (detail) return detail;
 
         if (error.response?.status === 404) {
-            return `NVIDIA API returned 404 — model "${CHAT_MODEL}" not found. Try: openai/gpt-oss-120b`;
+            return `NVIDIA API returned 404 — model "${CHAT_MODEL}" not found. Try: meta/llama-3.3-70b-instruct`;
         }
 
         if (error.response?.status) return `NVIDIA API returned ${error.response.status}`;
