@@ -79,11 +79,14 @@ RA Social context: the user is chatting with an AI assistant in the RA Social ap
             top_p: options.topP ?? 0.95
         };
         if (model === OMNI_MODEL && options.thinking !== false) {
+            // NVIDIA's raw HTTP API expects these fields flat on the payload.
+            // Nesting them under "extra_body" only works with the Python/Node OpenAI SDKs
+            // (which flatten it for you) — with a plain axios POST it was being sent
+            // as a literal unrecognized "extra_body" key, which the API ignored or
+            // rejected depending on strictness. That silently broke Omni (video) chats.
             payload.reasoning_budget = options.reasoningBudget || 8192;
-            payload.extra_body = {
-                chat_template_kwargs: { enable_thinking: true, reasoning_budget: payload.reasoning_budget },
-                mm_processor_kwargs: { use_audio_in_video: false }
-            };
+            payload.chat_template_kwargs = { enable_thinking: true };
+            payload.mm_processor_kwargs = { use_audio_in_video: false };
         }
         const response = await this.client.post('/chat/completions', payload);
         const content = response.data?.choices?.[0]?.message?.content;

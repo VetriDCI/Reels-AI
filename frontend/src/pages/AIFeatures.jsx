@@ -230,7 +230,13 @@ function AIFeatures() {
                           ))}
                         </div>
                       )}
-                      <div className="whitespace-pre-wrap break-words text-[15px] leading-6">{message.content}</div>
+                      {message.role === 'assistant' && message.model === 'stabilityai/sdxl-turbo' ? (
+                        <a href={message.content} target="_blank" rel="noreferrer">
+                          <img src={message.content} alt="AI generated" className="rounded-lg max-w-full max-h-80 object-contain" />
+                        </a>
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words text-[15px] leading-6">{message.content}</div>
+                      )}
                       {message.model && <div className="mt-2 text-[10px] opacity-50">{message.model}</div>}
                     </div>
                     {message.role === 'user' && <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center shrink-0"><UserIcon size={16} /></div>}

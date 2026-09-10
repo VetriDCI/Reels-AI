@@ -106,12 +106,24 @@ export const chatWithAI = async (req, res) => {
       take: 32
     });
 
-    const result = await nvidiaAI.chatWithAI(
-      message,
-      context,
-      attachments,
-      previous.map(m => ({ role: m.role, content: m.content }))
-    );
+    // "/image <prompt>" was documented but never actually routed to image
+    // generation — it was just being sent to the text model as a normal
+    // message. Intercept it here so it does what the UI/docs promise.
+    const imageMatch = message.trim().match(/^\/image\s+(.+)/i);
+    let result;
+    if (imageMatch) {
+      const imageResult = await nvidiaAI.generateImage(imageMatch[1].trim());
+      result = imageResult.success
+        ? { success: true, response: imageResult.imageUrl, model: 'stabilityai/sdxl-turbo' }
+        : { success: false, error: imageResult.error };
+    } else {
+      result = await nvidiaAI.chatWithAI(
+        message,
+        context,
+        attachments,
+        previous.map(m => ({ role: m.role, content: m.content }))
+      );
+    }
 
     if (!result.success) return res.status(500).json({ success: false, message: result.error, conversationId: conversation.id });
 
