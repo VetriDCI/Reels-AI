@@ -1,24 +1,15 @@
-RA Social AI — AI CODE ONLY UPDATE
+RA Social - AI ONLY update
 
-This package contains only the AI-related source files.
+IMPORTANT FIX:
+The existing App.jsx was rendering the old inline AIChatFeature component instead of frontend/src/pages/AIFeatures.jsx. This is why the new + attachment button and History UI were not appearing.
 
-Included:
-- backend/src/services/nvidiaAIService.js
-- backend/src/controllers/aiController.js
-- backend/src/routes/aiRoutes.js
-- backend/prisma/schema.prisma (AI conversation models only)
-- frontend/src/services/aiApi.js
-- frontend/src/pages/AIFeatures.jsx
+AI-only changes included:
+- frontend/src/App.jsx: AI tab now renders AIFeatures (AI-only integration change).
+- frontend/src/pages/AIFeatures.jsx: advanced AI chat UI with + attachments and History.
+- frontend/src/services/aiApi.js: AI upload/history APIs.
+- backend/src/services/nvidiaAIService.js: model fallback + automatic language behavior.
+- backend/src/controllers/aiController.js: AI upload/history/chat.
+- backend/src/routes/aiRoutes.js: AI history/upload routes.
+- backend/prisma/schema.prisma: AI conversation/message tables.
 
-AI behavior:
-- Automatic language detection and response-language switching.
-- English default when language is unclear.
-- Explicit user language request always wins.
-- Creation tasks (captions, scripts, posts, prompts, etc.) follow the user's requested language/style.
-- AI chat history with per-user conversations.
-- Visible History button on mobile and desktop.
-- Visible New Chat button.
-- Visible + attachment button for images, videos and supported files.
-- Up to 6 attachments.
-
-No non-AI app source files are included or changed by this package.
+No Home/Reels/Chat/Profile/Create Post logic was intentionally changed.

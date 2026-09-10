@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, Send } from 'lucide-react';
-import { postAPI, aiAPI } from './services/api';
+import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell } from 'lucide-react';
+import { postAPI } from './services/api';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -21,6 +21,7 @@ import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage
 import CreatePostModal from './components/CreatePostModal';
 import PostCard from './components/PostCard';
 import InstallPrompt from './components/InstallPrompt';
+import AIFeatures from './pages/AIFeatures';
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
@@ -90,7 +91,7 @@ function AppContent() {
       <main className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} />}
         {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} onSearch={() => setActiveTab('search')} initialPostId={reelTarget?.id} />}
-        {activeTab === 'ai' && <AIChatFeature />}
+        {activeTab === 'ai' && <AIFeatures />}
         {activeTab === 'chat' && <ChatPage />}
         {activeTab === 'me' && <MePage onLogout={logout} onBack={() => setActiveTab('home')} />}
         {activeTab === 'notifications' && <NotificationsPage />}
@@ -211,108 +212,6 @@ function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
   );
 }
 
-function AIChatFeature() {
-  const [messages, setMessages] = useState([
-    { role: 'ai', text: "Vanakkam! I'm Super AI ✨ Ask me for reel ideas, Tamil captions, or growth tips." },
-  ]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const endRef = useRef(null);
-
-  const suggestions = ['Create viral reel idea', 'Tamil caption for my post', 'Trending hashtags', 'Growth tips', '/image a cat wearing a hat'];
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const sendMessage = async (text) => {
-    const msg = text || input;
-    if (!msg.trim()) return;
-    setMessages((prev) => [...prev, { role: 'user', text: msg }]);
-    setInput('');
-    setLoading(true);
-
-    const imageMatch = msg.trim().match(/^\/(?:image|img)\s+(.+)$/is);
-    try {
-      if (imageMatch) {
-        const res = await aiAPI.generateImage({ prompt: imageMatch[1].trim() });
-        setMessages((prev) => [...prev, { role: 'ai', text: "Here's your generated image:", image: res.data.data.imageUrl }]);
-      } else {
-        const res = await aiAPI.chat({ message: msg });
-        setMessages((prev) => [...prev, { role: 'ai', text: res.data.data.response }]);
-      }
-    } catch (err) {
-      const detail = err.response?.data?.message || 'Please try again in a moment.';
-      setMessages((prev) => [...prev, { role: 'ai', text: `⚠️ Sorry, I couldn't respond. ${detail}` }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="pt-16 pb-4 flex flex-col h-screen bg-gradient-to-b from-pink-50 to-blue-50">
-      <div className="bg-gradient-to-r from-pink-500 to-blue-500 text-white px-4 py-3 flex items-center gap-2 fixed top-0 left-0 right-0 z-40">
-        <Sparkles className="w-5 h-5" />
-        <span className="font-bold">Super AI</span>
-        <span className="ml-auto text-xs bg-white/20 px-2 py-1 rounded-full">● Online</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm ${
-                m.role === 'user'
-                  ? 'bg-gradient-to-r from-pink-500 to-blue-500 text-white rounded-br-sm'
-                  : 'bg-white text-gray-800 shadow-sm rounded-bl-sm'
-              }`}
-            >
-              {m.text}
-              {m.image && (
-                <img src={m.image} alt="Generated" className="mt-2 rounded-xl max-w-full" />
-              )}
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-white text-gray-400 px-4 py-3 rounded-2xl shadow-sm text-sm">Typing...</div>
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
-
-      {messages.length <= 1 && (
-        <div className="px-4 pb-2 flex flex-wrap gap-2">
-          {suggestions.map((s) => (
-            <button
-              key={s}
-              onClick={() => sendMessage(s)}
-              className="px-3 py-2 bg-white border border-pink-200 rounded-full text-xs font-medium text-pink-600"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="px-4 pb-24 pt-2">
-        <div className="flex items-center gap-2 bg-white rounded-full shadow-sm px-4 py-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Ask Super AI... (try /image ...)"
-            className="flex-1 outline-none text-sm"
-          />
-          <button onClick={() => sendMessage()} disabled={loading} className="w-9 h-9 rounded-full bg-gradient-to-r from-pink-500 to-blue-500 flex items-center justify-center">
-            <Send className="w-4 h-4 text-white" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function App() {
   return (

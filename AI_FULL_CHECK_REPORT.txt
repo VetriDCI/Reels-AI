@@ -1,0 +1,20 @@
+RA Social AI - FULL CHECKED AI-ONLY PATCH
+
+Checked against the original project:
+- AI page routing: App.jsx now renders frontend/src/pages/AIFeatures.jsx.
+- Old inline AIChatFeature was removed so it cannot override the new UI.
+- App.jsx retains the original App/AuthProvider wrapper.
+- AI + attachment button is present in AIFeatures.jsx.
+- AI History, New Chat, open conversation and delete conversation are present.
+- Automatic language behavior is in the NVIDIA AI system prompt; English is fallback when unclear.
+- AI upload/history/chat/image APIs are connected.
+- AI routes are protected with the existing auth middleware.
+- Prisma AIConversation and AIMessage models are included.
+- Existing project dependencies already include multer, cloudinary, Prisma and lucide-react.
+- Existing backend start script already runs prisma db push, so the new AI tables can be created on deploy.
+- Backend JS syntax checks passed for nvidiaAIService.js, aiController.js and aiRoutes.js.
+- No Home/Reels/Chat/Profile/Create Post business logic was intentionally changed.
+
+Important limitation:
+- PDFs/non-text files are uploaded and passed as attachment URLs; this patch does not perform PDF OCR/text extraction.
+- Full Vite production build was not executed in this environment because the project dependencies/node_modules are not installed here.
