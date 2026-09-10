@@ -1,0 +1,14 @@
+RA Social - Full Frontend + Backend AI Update
+
+This archive contains the complete original frontend and backend project.
+AI-related changes included:
+- Automatic language detection and response-language switching.
+- AI history with History drawer and New Chat.
+- AI attachment + button beside the message input.
+- Image/video/file attachment upload support.
+- NVIDIA model fallback handling.
+- AI conversation persistence with Prisma AIConversation/AIMessage models.
+- AI route/controller/service updates.
+- AI page and App integration updates only for the AI feature.
+
+The rest of the original project files are included unchanged from the supplied project archive.
