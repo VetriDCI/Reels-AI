@@ -16,10 +16,8 @@ const storage = new CloudinaryStorage({
       folder: 'ra-social',
       resource_type: 'auto', // critical: without this, videos get stored as 'image' resource and won't play
       allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'webm'],
-      // Images: limit to 1080p. Videos: limit to 720p at medium ("good") quality to keep reel uploads small.
-      transformation: isVideo
-        ? [{ width: 1280, height: 720, crop: 'limit', quality: 'auto:good' }]
-        : [{ width: 1920, height: 1080, crop: 'limit' }],
+      // Only apply image resize transformation to images — video transformations need different handling.
+      transformation: isVideo ? undefined : [{ width: 1920, height: 1080, crop: 'limit' }],
     };
   },
 });

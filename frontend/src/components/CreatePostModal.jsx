@@ -63,26 +63,6 @@ function CreatePostModal({ onClose, onPostCreated }) {
       alert('Please choose a file smaller than 50 MB.');
       return;
     }
-    if (kind === 'video') {
-      const probeUrl = URL.createObjectURL(chosenFile);
-      const probe = document.createElement('video');
-      probe.preload = 'metadata';
-      probe.onloadedmetadata = () => {
-        URL.revokeObjectURL(probeUrl);
-        if (probe.duration > 90) {
-          alert('Please choose a video that is 90 seconds or shorter.');
-          return;
-        }
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-        setFile(chosenFile);
-        setMediaKind(kind);
-        setPreviewUrl(URL.createObjectURL(chosenFile));
-        setImageRotation(0);
-        setEditOpen(false);
-      };
-      probe.src = probeUrl;
-      return;
-    }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setFile(chosenFile);
     setMediaKind(kind);

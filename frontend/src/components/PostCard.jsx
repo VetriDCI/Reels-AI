@@ -104,12 +104,12 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
         ) : <button type="button" onClick={recordView} className="block w-full text-left"><img src={post.mediaUrl} alt="Post media" loading="lazy" className="w-full max-h-[70vh] object-contain rounded-lg bg-gray-100" /></button>}
       </div>}
 
-      <div className="flex items-center justify-between gap-1 px-3 py-3 border-t">
+      <div className="flex items-center gap-1.5 px-3 py-3 border-t overflow-x-auto whitespace-nowrap">
         <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
         <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
         <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
         {post.mediaUrl && <button onClick={handleDownload} disabled={downloading} className="action-btn hover:text-purple-600 disabled:opacity-50"><Download className="w-5 h-5" /><span>{downloading ? 'Saving…' : 'Download'}</span></button>}
-        <div ref={menuRef} className="relative shrink-0">
+        <div ref={menuRef} className="relative shrink-0 ml-auto">
           <button onClick={() => setMenuOpen(v => !v)} className="action-btn" aria-expanded={menuOpen} aria-label="More options"><MoreHorizontal className="w-5 h-5" /></button>
           {menuOpen && <div className="absolute right-0 bottom-10 z-[60] w-52 bg-white rounded-xl shadow-2xl border py-1">
             {post.mediaUrl && <button onClick={saveToApp} className="menu-item"><Download className="w-4 h-4" />Save to app</button>}

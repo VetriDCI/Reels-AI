@@ -1,0 +1,9 @@
+AI-only language update
+
+- AI now automatically detects the user's intended response language from the latest message.
+- Explicit language requests always take priority.
+- Most recent language preference is followed until the user changes it.
+- Mixed-language messages use the dominant language unless an explicit output language is requested.
+- Content creation (captions, scripts, posts, prompts, rewrites, etc.) is produced in the requested language/style.
+- English remains the fallback when the language is unclear.
+- No non-AI app features were intentionally changed.
