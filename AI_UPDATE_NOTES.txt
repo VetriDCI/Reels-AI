@@ -1,0 +1,24 @@
+RA Social AI — AI CODE ONLY UPDATE
+
+This package contains only the AI-related source files.
+
+Included:
+- backend/src/services/nvidiaAIService.js
+- backend/src/controllers/aiController.js
+- backend/src/routes/aiRoutes.js
+- backend/prisma/schema.prisma (AI conversation models only)
+- frontend/src/services/aiApi.js
+- frontend/src/pages/AIFeatures.jsx
+
+AI behavior:
+- Automatic language detection and response-language switching.
+- English default when language is unclear.
+- Explicit user language request always wins.
+- Creation tasks (captions, scripts, posts, prompts, etc.) follow the user's requested language/style.
+- AI chat history with per-user conversations.
+- Visible History button on mobile and desktop.
+- Visible New Chat button.
+- Visible + attachment button for images, videos and supported files.
+- Up to 6 attachments.
+
+No non-AI app source files are included or changed by this package.

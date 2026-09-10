@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Plus, Send, Paperclip, Image as ImageIcon, Video, FileText,
-  MessageSquare, Trash2, X, Sparkles, Menu, ArrowLeft, Loader2,
-  Bot, User as UserIcon
+  Plus, Send, Image as ImageIcon, Video, FileText,
+  MessageSquare, Trash2, X, Sparkles, Menu, Loader2,
+  Bot, User as UserIcon, History
 } from 'lucide-react';
 import { aiAPI } from '../services/aiApi';
 
@@ -196,11 +196,14 @@ function AIFeatures() {
 
         {/* Chat */}
         <main className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 bg-white/90 backdrop-blur border-b flex items-center px-4 gap-3 sticky top-0 z-10">
-            <button className="md:hidden p-2" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center"><Bot size={20} /></div>
-            <div className="flex-1"><div className="font-semibold text-gray-900">RA Social AI</div><div className="text-[11px] text-green-600">Advanced AI • multimodal</div></div>
-            <button onClick={newChat} className="text-sm px-3 py-2 rounded-full border hover:bg-gray-50">New chat</button>
+          <header className="h-14 bg-white/95 backdrop-blur border-b flex items-center px-3 md:px-4 gap-2 sticky top-0 z-10">
+            <button className="md:hidden w-10 h-10 rounded-full border bg-white flex items-center justify-center text-gray-700" onClick={() => setSidebarOpen(true)} aria-label="Open AI history" title="AI History">
+              <History size={20} />
+            </button>
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shrink-0"><Bot size={20} /></div>
+            <div className="flex-1 min-w-0"><div className="font-semibold text-gray-900 truncate">RA Social AI</div><div className="text-[11px] text-green-600">Advanced AI • automatic language • multimodal</div></div>
+            <button onClick={() => setSidebarOpen(true)} className="hidden md:flex items-center gap-1.5 text-sm px-3 py-2 rounded-full border hover:bg-gray-50" title="AI History"><History size={16} /> History</button>
+            <button onClick={newChat} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-sm" title="New chat"><Plus size={16} /> <span className="hidden sm:inline">New chat</span></button>
           </header>
 
           <section className="flex-1 overflow-y-auto px-4 py-6">
@@ -208,7 +211,7 @@ function AIFeatures() {
               <div className="max-w-2xl mx-auto text-center pt-12 md:pt-20">
                 <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shadow-lg"><Sparkles size={30} /></div>
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mt-5">What can I help you with?</h1>
-                <p className="text-gray-500 mt-2">Ask anything, or use + to attach photos, videos and files.</p>
+                <p className="text-gray-500 mt-2">Ask anything. Use the <b>+</b> button to attach photos, videos and files, or open <b>History</b> to continue an old AI chat.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8 text-left">
                   {['Analyze this photo', 'Explain something deeply', 'Help me create content'].map((text) => (
                     <button key={text} onClick={() => setInputText(text)} className="p-4 rounded-xl bg-white border hover:border-purple-300 hover:shadow-sm text-sm text-gray-700">{text}</button>
