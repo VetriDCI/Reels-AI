@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell } from 'lucide-react';
-import { postAPI } from './services/api';
+import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, Send } from 'lucide-react';
+import { postAPI, aiAPI } from './services/api';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -16,12 +16,12 @@ import ChatPage from './pages/ChatPage';
 import ReelsPage from './pages/ReelsPage';
 import MePage from './pages/MePage';
 import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage';
+import AIFeatures from './pages/AIFeatures';
 
 // Components
 import CreatePostModal from './components/CreatePostModal';
 import PostCard from './components/PostCard';
 import InstallPrompt from './components/InstallPrompt';
-import AIFeatures from './pages/AIFeatures';
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
@@ -211,7 +211,6 @@ function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
     </div>
   );
 }
-
 
 function App() {
   return (
