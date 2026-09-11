@@ -1,0 +1,29 @@
+RA Social AI — Phase 6: File AI
+
+Implemented from Phase 5.
+
+Features:
+- File summarization
+- Key information extraction
+- Multi-file comparison
+- Agreement/difference/contradiction analysis
+- File Q&A
+- Document outline generation
+- Language-aware file responses
+- Text extraction for TXT, MD, JSON, CSV, LOG, XML, HTML and source-code text files
+- PDF text extraction when the server provides pdftotext (graceful fallback if unavailable)
+- Up to 6 AI file attachments, preserving existing upload flow
+- File AI quick actions in the AI composer
+- Groq reasoning/fast model fallback
+- Existing chat, web agent, deep research and vision features preserved
+
+Important:
+- This phase does not pretend to parse unsupported binary office formats if text extraction is unavailable.
+- PDF extraction uses the server's pdftotext utility when present.
+- The AI is instructed to answer only from extracted file content and not invent missing facts.
+- NVIDIA has not been reintroduced.
+
+Validation:
+- Backend JS syntax checks: passed
+- NVIDIA source scan: clean
+- Frontend build could not run because the extracted package has no installed Vite dependency in node_modules in this environment. Source changes were syntax-reviewed; run npm install/npm run build in the project environment.

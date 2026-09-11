@@ -47,11 +47,6 @@ export const postAPI = {
   download: (id) => `${API_URL}/posts/${id}/download`
 };
 
-export const aiAPI = {
-  chat: (data) => api.post('/ai/chat', data),
-  generateImage: (data) => api.post('/ai/image', data)
-};
-
 export const monetizationAPI = {
   status: () => api.get('/monetization/status'),
   apply: () => api.post('/monetization/apply')

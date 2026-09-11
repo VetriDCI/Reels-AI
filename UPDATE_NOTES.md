@@ -22,7 +22,9 @@ Note: frontend production build could not be executed in this environment becaus
 
 ## AI simplification (Super AI merge)
 - Removed the unused multi-feature AI grid (`AIFeatures.jsx`, `services/aiApi.js`) and its backend endpoints (`generate-caption`, `generate-hashtags`, `translate`, `moderate`) — none of these were wired into the live app.
-- The "AI" tab's chat (`App.jsx` → `AIChatFeature`) now uses the same fixed NVIDIA setup as Super AI Studio:
-  - Fixed chat model bug (was `meta/llama-3.1-8b-instruct`, which was returning 404) → now `openai/gpt-oss-120b` via `NVIDIA_MODEL` env var.
-  - Added AI image generation: type `/image <prompt>` in the AI chat to generate an image (NVIDIA `stabilityai/sdxl-turbo`, uploaded to Cloudinary, same `NVIDIA_API_KEY`).
-- New optional env vars (Render → Environment): `NVIDIA_MODEL` (default `openai/gpt-oss-120b`), `NVIDIA_IMAGE_MODEL` (default `stabilityai/sdxl-turbo`). `NVIDIA_API_KEY` must already be set.
+- The "AI" tab now uses the dedicated `AIFeatures` page with the new Groq-based AI core:
+  - Normal chat uses `openai/gpt-oss-20b`.
+  - Coding/reasoning tasks use `openai/gpt-oss-120b`.
+  - Current-information/research/URL tasks use `groq/compound` with built-in tools when supported.
+  - Groq model fallback is enabled.
+- New backend env vars: `GROQ_API_KEY`, `GROQ_FAST_MODEL`, `GROQ_REASONING_MODEL`, `GROQ_AGENT_MODEL`, `GROQ_REASONING_EFFORT`.

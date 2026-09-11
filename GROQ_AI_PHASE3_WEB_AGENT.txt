@@ -1,0 +1,13 @@
+RA Social AI — Phase 3: Web + Agent
+
+Implemented:
+- Groq Compound agent routing for current/latest/web/research/URL tasks
+- groq/compound-mini fallback for faster single-tool tasks
+- Groq-Model-Version: latest
+- Built-in tools: web_search, visit_website, code_interpreter
+- Groq citation_options enabled
+- API returns executedTools and extracted sources
+- Frontend displays agent/tool status and source links
+- Existing chat/history/attachments preserved
+
+No separate web-search provider or Wolfram key is required for this phase.

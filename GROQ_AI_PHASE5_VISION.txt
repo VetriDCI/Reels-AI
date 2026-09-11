@@ -1,0 +1,25 @@
+RA Social AI — Groq AI Phase 5: Vision AI
+
+Implemented:
+- Automatic image understanding when an image attachment is present.
+- Qwen 3.6 27B vision model via Groq.
+- Visual question answering.
+- OCR / text extraction prompts.
+- Screenshot and UI analysis prompts.
+- Chart / graph / diagram analysis prompts.
+- Image comparison when multiple images are attached.
+- Caption generation prompts.
+- Social post generation from images.
+- Image-to-prompt generation prompts.
+- Accessibility descriptions.
+- Visual reasoning with uncertainty handling.
+- Up to 5 images passed to a vision request, matching Groq's documented limit for qwen/qwen3.6-27b.
+- Image upload guard at 20 MB, matching Groq's documented image URL limit.
+- Vision model fallback to GPT-OSS 120B / 20B if the configured vision model is unavailable.
+- Existing text, agent, research, history, and attachment functionality preserved.
+
+Configuration:
+GROQ_VISION_MODEL=qwen/qwen3.6-27b
+
+Note:
+Groq's current vision documentation supports image inputs, not direct video understanding through this chat-completions flow. Video attachments remain uploadable, but they are not falsely treated as analyzed video content.

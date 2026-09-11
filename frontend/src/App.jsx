@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, Send } from 'lucide-react';
-import { postAPI, aiAPI } from './services/api';
+import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell } from 'lucide-react';
+import { postAPI } from './services/api';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -14,9 +14,9 @@ import SearchPage from './pages/SearchPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ChatPage from './pages/ChatPage';
 import ReelsPage from './pages/ReelsPage';
+import AIFeatures from './pages/AIFeatures';
 import MePage from './pages/MePage';
 import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage';
-import AIFeatures from './pages/AIFeatures';
 
 // Components
 import CreatePostModal from './components/CreatePostModal';

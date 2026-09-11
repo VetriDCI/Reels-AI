@@ -1,0 +1,15 @@
+RA SOCIAL AI — PHASE 2: LANGUAGE AI
+
+Implemented:
+- Automatic language detection for English, Tamil, Tanglish, Hindi, Malayalam, Telugu and Kannada.
+- Explicit language requests take priority.
+- Automatic language switching when the latest request changes language.
+- Tanglish-aware casual style detection.
+- Translation instruction handling.
+- Grammar and spelling correction behavior.
+- Formal/casual/professional tone preservation and switching instructions.
+- Simple explanation behavior.
+- Multilingual response rules that avoid unnecessary language mixing.
+- Language metadata returned by the AI chat endpoint.
+
+NVIDIA is not used by the AI service.

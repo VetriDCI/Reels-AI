@@ -39,6 +39,7 @@ model User {
   chats         Chat[]
   messages      Message[]
   aiConversations AIConversation[]
+  aiMemories     AIMemory[]
 
   @@index([username])
   @@index([email])
@@ -170,6 +171,19 @@ model PostView {
   @@unique([userId, postId])
   @@index([postId])
   @@index([userId])
+}
+
+model AIMemory {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  category  String   @default("general")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([category])
 }
 
 model AIConversation {

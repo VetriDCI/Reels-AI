@@ -38,3 +38,6 @@ No manual steps needed — on first boot it will:
 
 Check Render → Logs after deploying; you should see:
 `✅ Default admin account created: admin@rasocial.com`
+
+## AI Phase 11
+See `PHASE_11_CREATIVE_VIDEO_VOICE_MEMORY_AI.md` for the Creative, Video, Voice transcription, and Personal AI Memory additions.
