@@ -163,9 +163,10 @@ Core behavior:
   }
 
   async _request(model, messages) {
-    const payload = { model, messages, temperature: 0.4, citation_options: 'enabled' };
+    const payload = { model, messages, temperature: 0.4 };
     if (model === REASONING_MODEL) payload.reasoning_effort = process.env.GROQ_REASONING_EFFORT || 'medium';
     if (model === AGENT_MODEL || model === AGENT_FAST_MODEL) {
+      payload.citation_options = 'enabled';
       payload.compound_custom = {
         tools: {
           enabled_tools: ['web_search', 'visit_website', 'code_interpreter']
