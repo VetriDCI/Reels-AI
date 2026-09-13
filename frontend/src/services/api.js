@@ -18,6 +18,7 @@ api.interceptors.request.use((config) => {
 });
 
 export const authAPI = {
+  checkUsername: (username) => api.get(`/auth/check-username?username=${encodeURIComponent(username)}`),
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getMe: () => api.get('/auth/me'),

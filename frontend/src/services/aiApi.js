@@ -14,23 +14,22 @@ export const aiAPI = {
   video: (data) => api.post('/ai/video', data),
   generateImage: (data) => api.post('/ai/generate-image', data),
   generateVideo: (data) => api.post('/ai/generate-video', data),
-  transcribe: (file) => { const formData = new FormData(); formData.append('audio', file); return api.post('/ai/transcribe', formData, { headers: { 'Content-Type': 'multipart/form-data' } }); },
+  transcribe: (file) => { const formData = new FormData(); formData.append('audio', file); return api.post('/ai/transcribe', formData); },
   memories: () => api.get('/ai/memory'),
   saveMemory: (data) => api.post('/ai/memory', data),
   deleteMemory: (id) => api.delete(`/ai/memory/${id}`),
-  analyzeFiles: (files, task = 'summarize', question = '') => {
+  analyzeFiles: (files, task = 'summarize', question = '', conversationId) => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
     formData.append('task', task);
     formData.append('question', question);
-    return api.post('/ai/file-analyze', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    if (conversationId) formData.append('conversationId', conversationId);
+    return api.post('/ai/file-analyze', formData);
   },
   upload: (files) => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
-    return api.post('/ai/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    return api.post('/ai/upload', formData);
   },
   history: () => api.get('/ai/history'),
   getConversation: (id) => api.get(`/ai/history/${id}`),

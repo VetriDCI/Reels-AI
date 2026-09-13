@@ -112,6 +112,44 @@ function AIFeatures() {
     }
   };
 
+  const closeAllModes = () => {
+    setResearchMode(false);
+    setCodingMode(false);
+    setDataMode(false);
+    setWritingMode(false);
+    setSocialMode(false);
+    setCreativeMode(false);
+    setVideoMode(false);
+    setMemoryMode(false);
+    setMediaGenerateMode(null);
+  };
+
+  const toggleMode = (mode) => {
+    const active = mode === 'research' ? researchMode
+      : mode === 'coding' ? codingMode
+      : mode === 'data' ? dataMode
+      : mode === 'writing' ? writingMode
+      : mode === 'social' ? socialMode
+      : mode === 'creative' ? creativeMode
+      : mode === 'video' ? videoMode
+      : mode === 'memory' ? memoryMode
+      : mode === 'image' ? mediaGenerateMode === 'image'
+      : mode === 'mediaVideo' ? mediaGenerateMode === 'video'
+      : false;
+    closeAllModes();
+    if (active) return;
+    if (mode === 'research') setResearchMode(true);
+    if (mode === 'coding') setCodingMode(true);
+    if (mode === 'data') setDataMode(true);
+    if (mode === 'writing') setWritingMode(true);
+    if (mode === 'social') setSocialMode(true);
+    if (mode === 'creative') setCreativeMode(true);
+    if (mode === 'video') setVideoMode(true);
+    if (mode === 'memory') { setMemoryMode(true); loadMemories(); }
+    if (mode === 'image') setMediaGenerateMode('image');
+    if (mode === 'mediaVideo') setMediaGenerateMode('video');
+  };
+
   const deleteConversation = async (id, event) => {
     event.stopPropagation();
     try {
@@ -155,7 +193,7 @@ function AIFeatures() {
     if (!rawFiles.length || sending || uploading) return;
     setSending(true);
     try {
-      const response = await aiAPI.analyzeFiles(rawFiles, task, inputText.trim());
+      const response = await aiAPI.analyzeFiles(rawFiles, task, inputText.trim(), conversationId);
       const data = response.data?.data || {};
       setConversationId(data.conversationId || conversationId);
       setMessages((prev) => [
@@ -164,6 +202,9 @@ function AIFeatures() {
         { id: `file-ai-${Date.now()}`, role: 'assistant', content: data.response || 'File analysis completed.', model: data.model, fileAI: true }
       ]);
       setInputText('');
+      setAttachments([]);
+      setRawFiles([]);
+      await loadHistory();
     } catch (error) {
       setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || 'File analysis failed. Please try again.' }]);
     } finally {
@@ -250,10 +291,12 @@ function AIFeatures() {
     setMessages((prev) => [...prev, { id: `creative-user-${Date.now()}`, role: 'user', content: request }]);
     setInputText('');
     try {
-      const response = await aiAPI.creative({ request, task: creativeTask, style: creativeStyle });
+      const response = await aiAPI.creative({ request, task: creativeTask, style: creativeStyle, conversationId });
       const data = response.data?.data || {};
-      setMessages((prev) => [...prev, { id: `creative-ai-${Date.now()}`, role: 'assistant', content: data.response || 'Creative response completed.', model: data.model, creativeAI: true }]);
+      setConversationId(data.conversationId || conversationId);
+      setMessages((prev) => [...prev, { id: data.messageId || `creative-ai-${Date.now()}`, role: 'assistant', content: data.response || 'Creative response completed.', model: data.model, creativeAI: true }]);
       setCreativeMode(false);
+      await loadHistory();
     } catch (error) { setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || 'Creative AI failed. Please try again.' }]); }
     finally { setSending(false); }
   };
@@ -265,10 +308,12 @@ function AIFeatures() {
     setMessages((prev) => [...prev, { id: `video-user-${Date.now()}`, role: 'user', content: request }]);
     setInputText('');
     try {
-      const response = await aiAPI.video({ request, task: videoTask, duration: videoDuration });
+      const response = await aiAPI.video({ request, task: videoTask, duration: videoDuration, conversationId });
       const data = response.data?.data || {};
-      setMessages((prev) => [...prev, { id: `video-ai-${Date.now()}`, role: 'assistant', content: data.response || 'Video plan completed.', model: data.model, videoAI: true }]);
+      setConversationId(data.conversationId || conversationId);
+      setMessages((prev) => [...prev, { id: data.messageId || `video-ai-${Date.now()}`, role: 'assistant', content: data.response || 'Video plan completed.', model: data.model, videoAI: true }]);
       setVideoMode(false);
+      await loadHistory();
     } catch (error) { setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || 'Video AI failed. Please try again.' }]); }
     finally { setSending(false); }
   };
@@ -285,6 +330,7 @@ function AIFeatures() {
         ? await aiAPI.generateImage({ prompt, conversationId })
         : await aiAPI.generateVideo({ prompt, duration: 4, conversationId });
       const data = response.data?.data || {};
+      if (data.conversationId) setConversationId(data.conversationId);
       setMessages((prev) => [...prev, {
         id: `media-ai-${Date.now()}`,
         role: 'assistant',
@@ -297,7 +343,7 @@ function AIFeatures() {
       setMediaGenerateMode(null);
       await loadHistory();
     } catch (error) {
-      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || `${type === 'image' ? 'Image' : 'Video'} generation failed. Check the media generation API configuration.` }]);
+      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || error.message || `${type === 'image' ? 'Image' : 'Video'} generation failed. Check the media generation API configuration.` }]);
     } finally { setSending(false); }
   };
 
@@ -399,12 +445,14 @@ function AIFeatures() {
     if (!topic || sending) return;
     setSending(true);
     try {
-      const response = await aiAPI.research({ topic, depth: researchDepth });
+      const response = await aiAPI.research({ topic, depth: researchDepth, conversationId });
       const data = response.data?.data || {};
+      setConversationId(data.conversationId || conversationId);
       setMessages((prev) => [...prev,
         { id: `user-${Date.now()}`, role: 'user', content: topic },
         { id: data.messageId || `research-${Date.now()}`, role: 'assistant', content: data.response || 'Research completed.', model: data.model, sources: data.sources || [], agent: true }
       ]);
+      await loadHistory();
       setInputText('');
       setResearchMode(false);
     } catch (error) {
@@ -432,7 +480,17 @@ function AIFeatures() {
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      sendMessage();
+      if (sending || uploading) return;
+      if (mediaGenerateMode) return runMediaGeneration();
+      if (researchMode) return runDeepResearch();
+      if (codingMode) return runCodingAI();
+      if (dataMode) return runDataAI();
+      if (writingMode) return runWritingAI();
+      if (socialMode) return runSocialAI();
+      if (creativeMode) return runCreativeAI();
+      if (videoMode) return runVideoAI();
+      if (memoryMode) return saveMemory();
+      return sendMessage();
     }
   };
 
@@ -446,7 +504,7 @@ function AIFeatures() {
     <div className="pt-16 min-h-screen bg-gradient-to-b from-white to-purple-50/40 flex flex-col">
       <div className="flex-1 flex min-h-[calc(100vh-64px)] overflow-hidden">
         {/* History */}
-        <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:relative md:translate-x-0 z-30 w-72 h-[calc(100vh-64px)] bg-white border-r border-gray-200 transition-transform duration-200 flex flex-col`}>
+        <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 left-0 z-40 w-72 h-[calc(100vh-64px)] bg-white border-r border-gray-200 shadow-xl transition-transform duration-200 flex flex-col`}>
           <div className="p-4 border-b flex items-center justify-between">
             <div className="font-bold text-gray-900 flex items-center gap-2"><Sparkles size={20} /> AI Chats</div>
             <button onClick={newChat} className="p-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white" title="New chat"><Plus size={18} /></button>
@@ -471,31 +529,44 @@ function AIFeatures() {
           </div>
         </aside>
 
-        {sidebarOpen && <button className="fixed inset-0 bg-black/20 z-20 md:hidden" onClick={() => setSidebarOpen(false)} aria-label="Close history" />}
+        {sidebarOpen && <button className="fixed inset-0 top-16 bg-black/20 z-30" onClick={() => setSidebarOpen(false)} aria-label="Close history" />}
 
         {/* Chat */}
         <main className="flex-1 flex flex-col min-w-0">
           <header className="h-14 bg-white/90 backdrop-blur border-b flex items-center px-4 gap-3 sticky top-0 z-10">
-            <button className="md:hidden p-2" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button>
+            <button className="p-2 rounded-full hover:bg-gray-100" onClick={() => setSidebarOpen((v) => !v)} title="AI history" aria-label="AI history"><Menu size={21} /></button>
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center"><Bot size={20} /></div>
             <div className="flex-1"><div className="font-semibold text-gray-900">RA Social AI</div><div className="text-[11px] text-green-600">Groq AI • Auto mode</div></div>
-            <button onClick={() => { setCodingMode(false); setDataMode(false); setResearchMode((v) => !v); }} title="Deep research" className={`p-2 rounded-full border ${researchMode ? 'bg-purple-50 border-purple-300 text-purple-700' : 'hover:bg-gray-50'}`}><Search size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setDataMode(false); setCodingMode((v) => !v); }} title="Coding" className={`p-2 rounded-full border ${codingMode ? 'bg-blue-50 border-blue-300 text-blue-700' : 'hover:bg-gray-50'}`}><Code2 size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode((v) => !v); }} title="Data & Reasoning" className={`p-2 rounded-full border ${dataMode ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'hover:bg-gray-50'}`}><BarChart3 size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode(false); setWritingMode((v) => !v); }} title="Writing" className={`p-2 rounded-full border ${writingMode ? 'bg-pink-50 border-pink-300 text-pink-700' : 'hover:bg-gray-50'}`}><PenSquare size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode(false); setWritingMode(false); setSocialMode((v) => !v); }} title="Social & Reels" className={`p-2 rounded-full border ${socialMode ? 'bg-orange-50 border-orange-300 text-orange-700' : 'hover:bg-gray-50'}`}><Share2 size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode(false); setWritingMode(false); setSocialMode(false); setVideoMode(false); setMemoryMode(false); setCreativeMode((v) => !v); }} title="Creative" className={`p-2 rounded-full border ${creativeMode ? 'bg-fuchsia-50 border-fuchsia-300 text-fuchsia-700' : 'hover:bg-gray-50'}`}><Palette size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode(false); setWritingMode(false); setSocialMode(false); setCreativeMode(false); setMemoryMode(false); setVideoMode((v) => !v); }} title="Video" className={`p-2 rounded-full border ${videoMode ? 'bg-cyan-50 border-cyan-300 text-cyan-700' : 'hover:bg-gray-50'}`}><Video size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode(false); setWritingMode(false); setSocialMode(false); setCreativeMode(false); setVideoMode(false); setMemoryMode(false); setMediaGenerateMode((v) => v === 'image' ? null : 'image'); }} title="Generate Image" className={`p-2 rounded-full border ${mediaGenerateMode === 'image' ? 'bg-rose-50 border-rose-300 text-rose-700' : 'hover:bg-gray-50'}`}><ImageIcon size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode(false); setWritingMode(false); setSocialMode(false); setCreativeMode(false); setVideoMode(false); setMemoryMode(false); setMediaGenerateMode((v) => v === 'video' ? null : 'video'); }} title="Generate Video" className={`p-2 rounded-full border ${mediaGenerateMode === 'video' ? 'bg-sky-50 border-sky-300 text-sky-700' : 'hover:bg-gray-50'}`}><Wand2 size={17} /></button>
-            <button onClick={() => { setResearchMode(false); setCodingMode(false); setDataMode(false); setWritingMode(false); setSocialMode(false); setCreativeMode(false); setVideoMode(false); setMemoryMode((v) => !v); loadMemories(); }} title="Memory" className={`p-2 rounded-full border ${memoryMode ? 'bg-violet-50 border-violet-300 text-violet-700' : 'hover:bg-gray-50'}`}><Brain size={17} /></button>
+            <button onClick={() => toggleMode('research')} title="Deep research" className={`p-2 rounded-full border ${researchMode ? 'bg-purple-50 border-purple-300 text-purple-700' : 'hover:bg-gray-50'}`}><Search size={17} /></button>
+            <button onClick={() => toggleMode('coding')} title="Coding" className={`p-2 rounded-full border ${codingMode ? 'bg-blue-50 border-blue-300 text-blue-700' : 'hover:bg-gray-50'}`}><Code2 size={17} /></button>
+            <button onClick={() => toggleMode('data')} title="Data & Reasoning" className={`p-2 rounded-full border ${dataMode ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'hover:bg-gray-50'}`}><BarChart3 size={17} /></button>
+            <button onClick={() => toggleMode('writing')} title="Writing" className={`p-2 rounded-full border ${writingMode ? 'bg-pink-50 border-pink-300 text-pink-700' : 'hover:bg-gray-50'}`}><PenSquare size={17} /></button>
+            <button onClick={() => toggleMode('social')} title="Social & Reels" className={`p-2 rounded-full border ${socialMode ? 'bg-orange-50 border-orange-300 text-orange-700' : 'hover:bg-gray-50'}`}><Share2 size={17} /></button>
+            <button onClick={() => toggleMode('creative')} title="Creative" className={`p-2 rounded-full border ${creativeMode ? 'bg-fuchsia-50 border-fuchsia-300 text-fuchsia-700' : 'hover:bg-gray-50'}`}><Palette size={17} /></button>
+            <button onClick={() => toggleMode('video')} title="Video" className={`p-2 rounded-full border ${videoMode ? 'bg-cyan-50 border-cyan-300 text-cyan-700' : 'hover:bg-gray-50'}`}><Video size={17} /></button>
+            <button onClick={() => toggleMode('image')} title="Generate Image" className={`p-2 rounded-full border ${mediaGenerateMode === 'image' ? 'bg-rose-50 border-rose-300 text-rose-700' : 'hover:bg-gray-50'}`}><ImageIcon size={17} /></button>
+            <button onClick={() => toggleMode('mediaVideo')} title="Generate Video" className={`p-2 rounded-full border ${mediaGenerateMode === 'video' ? 'bg-sky-50 border-sky-300 text-sky-700' : 'hover:bg-gray-50'}`}><Wand2 size={17} /></button>
+            <button onClick={() => toggleMode('memory')} title="Memory" className={`p-2 rounded-full border ${memoryMode ? 'bg-violet-50 border-violet-300 text-violet-700' : 'hover:bg-gray-50'}`}><Brain size={17} /></button>
             <button onClick={exportChat} disabled={!messages.length} className="p-2 rounded-full border hover:bg-gray-50 disabled:opacity-40" title="Export chat"><Download size={17} /></button>
             <button onClick={saveWorkspace} className="p-2 rounded-full border hover:bg-gray-50" title="Save workspace"><FolderOpen size={17} /></button>
             <button onClick={() => setSettingsOpen((v) => !v)} className={`p-2 rounded-full border hover:bg-gray-50 ${settingsOpen ? 'bg-gray-100' : ''}`} title="AI settings"><Settings size={17} /></button>
             <button onClick={newChat} title="New chat" className="p-2 rounded-full border hover:bg-gray-50"><Plus size={17} /></button>
           </header>
 
-          <section className="flex-1 overflow-y-auto px-4 py-6">
+          {settingsOpen && (
+            <div className="border-b bg-white px-4 py-3 shadow-sm">
+              <div className="max-w-3xl mx-auto flex flex-wrap items-center gap-3 text-xs">
+                <span className="font-semibold text-gray-800">AI Settings</span>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={autoSaveChats} onChange={(e) => setAutoSaveChats(e.target.checked)} /> Auto-save chats</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={compactMode} onChange={(e) => setCompactMode(e.target.checked)} /> Compact mode</label>
+                {usage && <span className="text-gray-500">{usage.conversations || 0} chats • {usage.messages || 0} messages</span>}
+                {capabilities && <span className="text-green-600">AI backend ready • {capabilities.provider || 'Groq'}</span>}
+                {capabilities?.media?.configured === false && <span className="text-amber-600">Image/video generation key not configured</span>}
+              </div>
+            </div>
+          )}
+
+          <section className={`flex-1 overflow-y-auto px-4 py-6 ${compactMode ? 'py-3' : ''}`}>
             {messages.length === 0 ? (
               <div className="max-w-2xl mx-auto text-center pt-12 md:pt-20">
                 <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shadow-lg"><Sparkles size={30} /></div>
@@ -515,11 +586,14 @@ function AIFeatures() {
                     <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${message.role === 'user' ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-br-md' : 'bg-white border border-gray-100 shadow-sm text-gray-800 rounded-bl-md'}`}>
                       {message.attachments?.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
-                          {message.attachments.map((file, index) => (
-                            <a key={`${file.url}-${index}`} href={file.url} target="_blank" rel="noreferrer" className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${message.role === 'user' ? 'bg-white/15' : 'bg-gray-100'}`}>
-                              {fileIcon(file.mimeType)}<span className="max-w-32 truncate">{file.name}</span>
-                            </a>
-                          ))}
+                          {message.attachments.map((file, index) => {
+                            const mediaType = file.type || (file.mimeType?.startsWith('video/') ? 'video' : file.mimeType?.startsWith('image/') ? 'image' : null);
+                            if (mediaType === 'image' && file.url) return <img key={`${file.url}-${index}`} src={file.url} alt={file.name || 'AI image'} className="max-w-full max-h-72 rounded-lg object-contain" loading="lazy" />;
+                            if (mediaType === 'video' && file.url) return <video key={`${file.url}-${index}`} src={file.url} controls playsInline className="max-w-full max-h-72 rounded-lg bg-black" />;
+                            return <a key={`${file.url || file.name}-${index}`} href={file.url || '#'} target="_blank" rel="noreferrer" className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs ${message.role === 'user' ? 'bg-white/15' : 'bg-gray-100'}`}>
+                              {fileIcon(file.mimeType)}<span className="max-w-32 truncate">{file.name || 'Attachment'}</span>
+                            </a>;
+                          })}
                         </div>
                       )}
                       <div className="whitespace-pre-wrap break-words text-[15px] leading-6">{message.content}</div>
@@ -668,9 +742,9 @@ function AIFeatures() {
                 <button onClick={() => audioInputRef.current?.click()} disabled={sending} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-40" title="Voice transcription"><Mic size={20} /></button>
                 <input ref={audioInputRef} type="file" accept="audio/*" onChange={handleAudio} className="hidden" />
                 <button onClick={() => fileInputRef.current?.click()} disabled={uploading || attachments.length >= MAX_FILES} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-40" title="Attach files"><Plus size={23} /></button>
-                <input ref={fileInputRef} type="file" multiple accept="image/*,video/*,.pdf,.txt,.json,.csv,.md" onChange={handleFiles} className="hidden" />
+                <input ref={fileInputRef} type="file" multiple accept="image/*,video/*,.pdf,.txt,.json,.csv,.md,.log,.xml,.html,.css,.js,.jsx,.ts,.tsx,.sql,.prisma,.yaml,.yml,.zip" onChange={handleFiles} className="hidden" />
                 <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown} rows={1} placeholder={uploading ? 'Uploading files...' : 'Message RA Social AI...'} className="flex-1 resize-none outline-none bg-transparent px-2 py-2 max-h-32" />
-                <button onClick={mediaGenerateMode ? runMediaGeneration : researchMode ? runDeepResearch : codingMode ? runCodingAI : dataMode ? runDataAI : writingMode ? runWritingAI : socialMode ? runSocialAI : creativeMode ? runCreativeAI : videoMode ? runVideoAI : memoryMode ? saveMemory : sendMessage} disabled={sending || uploading || !inputText.trim()} className="w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white flex items-center justify-center disabled:opacity-40" title={mediaGenerateMode ? `Generate ${mediaGenerateMode}` : researchMode ? 'Start research' : codingMode ? 'Run coding AI' : dataMode ? 'Run data analysis' : writingMode ? 'Run Writing AI' : socialMode ? 'Run Social & Reels AI' : creativeMode ? 'Run Creative AI' : videoMode ? 'Run Video AI' : memoryMode ? 'Save memory' : 'Send'}><Send size={18} /></button>
+                <button onClick={mediaGenerateMode ? runMediaGeneration : researchMode ? runDeepResearch : codingMode ? runCodingAI : dataMode ? runDataAI : writingMode ? runWritingAI : socialMode ? runSocialAI : creativeMode ? runCreativeAI : videoMode ? runVideoAI : memoryMode ? saveMemory : sendMessage} disabled={sending || uploading || (!inputText.trim() && !attachments.length)} className="w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white flex items-center justify-center disabled:opacity-40" title={mediaGenerateMode ? `Generate ${mediaGenerateMode}` : researchMode ? 'Start research' : codingMode ? 'Run coding AI' : dataMode ? 'Run data analysis' : writingMode ? 'Run Writing AI' : socialMode ? 'Run Social & Reels AI' : creativeMode ? 'Run Creative AI' : videoMode ? 'Run Video AI' : memoryMode ? 'Save memory' : 'Send'}><Send size={18} /></button>
               </div>
               <div className="text-[10px] text-gray-400 text-center mt-2">+ supports up to {MAX_FILES} attachments • AI may make mistakes</div>
             </div>

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Eye, EyeOff, Check, X } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { authAPI } from '../services/api';
 
 function RegisterPage() {
   const [username, setUsername] = useState('');
@@ -12,8 +13,56 @@ function RegisterPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState('idle');
+  const [usernameChecking, setUsernameChecking] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  const checkUsernameAvailability = async (value) => {
+    const name = value.trim();
+    if (!name) {
+      setUsernameStatus('idle');
+      return;
+    }
+    if (name.length < 3) {
+      setUsernameStatus('too_short');
+      return;
+    }
+
+    setUsernameChecking(true);
+    try {
+      const response = await authAPI.checkUsername(name);
+      setUsernameStatus(response.data?.data?.available ? 'available' : 'taken');
+    } catch {
+      // Do not block registration because of a temporary availability-check failure.
+      setUsernameStatus('idle');
+    } finally {
+      setUsernameChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    const name = username.trim();
+    if (!name) {
+      setUsernameStatus('idle');
+      setUsernameChecking(false);
+      return undefined;
+    }
+    if (name.length < 3) {
+      setUsernameStatus('too_short');
+      setUsernameChecking(false);
+      return undefined;
+    }
+
+    setUsernameStatus('checking');
+    const timer = setTimeout(() => checkUsernameAvailability(name), 450);
+    return () => clearTimeout(timer);
+  }, [username]);
+
+  const handleUsernameChange = (e) => {
+    setUsername(e.target.value);
+    setError('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,7 +70,31 @@ function RegisterPage() {
     setError('');
 
     try {
-      await register(username, email, password, fullName, phoneNumber);
+      if (usernameStatus === 'taken') {
+        setError('This username is already taken. Please choose a new username.');
+        setLoading(false);
+        return;
+      }
+      if (usernameStatus !== 'available') {
+        const name = username.trim();
+        if (name.length < 3) {
+          setError('Username must be at least 3 characters.');
+          setLoading(false);
+          return;
+        }
+        setUsernameChecking(true);
+        const response = await authAPI.checkUsername(name);
+        const available = response.data?.data?.available === true;
+        setUsernameStatus(available ? 'available' : 'taken');
+        setUsernameChecking(false);
+        if (!available) {
+          setError('This username is already taken. Please choose a new username.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      await register(username.trim(), email, password, fullName, phoneNumber);
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
@@ -61,14 +134,24 @@ function RegisterPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              placeholder="@username"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={username}
+                onChange={handleUsernameChange}
+                required
+                minLength={3}
+                autoComplete="username"
+                className={`w-full px-4 py-3 pr-11 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 ${usernameStatus === 'taken' ? 'border-red-400' : usernameStatus === 'available' ? 'border-green-400' : 'border-gray-300'}`}
+                placeholder="@username"
+              />
+              {usernameStatus === 'available' && <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-600" aria-label="Username available" />}
+              {usernameStatus === 'taken' && <X className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-red-500" aria-label="Username taken" />}
+            </div>
+            {usernameStatus === 'available' && <p className="text-xs text-green-600 mt-1">Username is available ✓</p>}
+            {usernameStatus === 'taken' && <p className="text-xs text-red-600 mt-1">Username already exists. Please choose another.</p>}
+            {usernameStatus === 'too_short' && <p className="text-xs text-gray-500 mt-1">Username must be at least 3 characters.</p>}
+            {usernameChecking && <p className="text-xs text-gray-500 mt-1">Checking username...</p>}
           </div>
 
           <div>

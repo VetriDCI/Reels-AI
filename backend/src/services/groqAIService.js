@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import axios from 'axios';
 
 const GROQ_BASE_URL = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
@@ -137,7 +138,9 @@ Core behavior:
   _attachmentContext(attachments = []) {
     if (!attachments.length) return '';
     return attachments.map((file, index) => {
-      const preview = file.textPreview ? `\nText preview:\n${file.textPreview.slice(0, 16000)}` : '';
+      const isProjectArchive = /\.zip$/i.test(String(file.name || '')) || /zip/i.test(String(file.mimeType || ''));
+      const previewLimit = isProjectArchive ? 50000 : 16000;
+      const preview = file.textPreview ? `\nText preview:\n${file.textPreview.slice(0, previewLimit)}` : '';
       return `Attachment ${index + 1}: ${file.name || 'unnamed file'} (${file.mimeType || 'unknown type'}, ${file.size || 0} bytes)${preview}`;
     }).join('\n\n');
   }
@@ -390,39 +393,89 @@ GroqAIService.prototype.transcribeAudio = async function (buffer, filename, mime
 GroqAIService.prototype.generateMedia = async function (prompt, options = {}) {
   const text = String(prompt || '').trim().slice(0, 4000);
   if (!text) return { success: false, error: 'Generation prompt is required.' };
-  const apiKey = process.env.POLLINATIONS_API_KEY;
+
+  const apiKey = String(process.env.POLLINATIONS_API_KEY || '').trim();
   if (!apiKey || apiKey.includes('your-pollinations')) {
-    return { success: false, error: 'POLLINATIONS_API_KEY is not configured. Add your Pollinations API key in the backend environment.' };
+    return {
+      success: false,
+      error: 'Pollinations API key is missing. Add a server-side sk_... key as POLLINATIONS_API_KEY in Render → Environment, then redeploy.'
+    };
   }
 
   const type = options.type === 'video' ? 'video' : 'image';
-  const base = process.env.POLLINATIONS_BASE_URL || 'https://gen.pollinations.ai';
+  const base = String(process.env.POLLINATIONS_BASE_URL || 'https://gen.pollinations.ai').replace(/\/$/, '');
   const model = type === 'video'
-    ? (process.env.POLLINATIONS_VIDEO_MODEL || 'veo')
-    : (process.env.POLLINATIONS_IMAGE_MODEL || 'flux');
+    ? String(process.env.POLLINATIONS_VIDEO_MODEL || 'veo')
+    : String(process.env.POLLINATIONS_IMAGE_MODEL || 'flux');
   const params = new URLSearchParams({ model });
+
   if (type === 'video') {
-    params.set('duration', String(options.duration || process.env.POLLINATIONS_VIDEO_DURATION || '4'));
+    const duration = Math.max(1, Math.min(12, Number(options.duration || process.env.POLLINATIONS_VIDEO_DURATION || 4)));
+    params.set('duration', String(duration));
   } else {
-    params.set('width', String(options.width || 1024));
-    params.set('height', String(options.height || 1024));
+    const width = Math.max(256, Math.min(2048, Number(options.width || 1024)));
+    const height = Math.max(256, Math.min(2048, Number(options.height || 1024)));
+    params.set('width', String(width));
+    params.set('height', String(height));
   }
 
   const endpoint = `${base}/${type}/${encodeURIComponent(text)}?${params.toString()}`;
   try {
     const response = await axios.get(endpoint, {
       responseType: 'arraybuffer',
-      timeout: type === 'video' ? 300000 : 120000,
-      headers: { Authorization: `Bearer ${apiKey}` }
+      timeout: type === 'video' ? 600000 : 180000,
+      maxContentLength: type === 'video' ? 250 * 1024 * 1024 : 25 * 1024 * 1024,
+      maxBodyLength: type === 'video' ? 250 * 1024 * 1024 : 25 * 1024 * 1024,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: type === 'video' ? 'video/mp4,video/*,application/octet-stream' : 'image/*,application/octet-stream'
+      },
+      validateStatus: () => true
     });
-    const contentType = response.headers['content-type'] || (type === 'video' ? 'video/mp4' : 'image/jpeg');
-    return { success: true, type, model, buffer: Buffer.from(response.data), contentType, provider: 'Pollinations' };
+
+    const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
+    const body = Buffer.from(response.data || []);
+
+    if (response.status < 200 || response.status >= 300) {
+      let detail = '';
+      if (contentType.includes('json')) {
+        try {
+          const parsed = JSON.parse(body.toString('utf8'));
+          detail = parsed?.error || parsed?.message || parsed?.detail || '';
+        } catch (_) { /* keep fallback */ }
+      } else {
+        detail = body.toString('utf8').slice(0, 700);
+      }
+      if (response.status === 401 || response.status === 403) {
+        detail = detail || 'Pollinations rejected the API key. Use a server-side sk_... secret key, not an App Key (pk_...), and check that the key is active.';
+      }
+      return { success: false, error: detail || `Pollinations ${type} generation failed (${response.status}).` };
+    }
+
+    if (!body.length) return { success: false, error: `Pollinations returned an empty ${type} response.` };
+    if (contentType.includes('json') || contentType.includes('text/plain')) {
+      let detail = body.toString('utf8').slice(0, 1000);
+      try {
+        const parsed = JSON.parse(detail);
+        detail = parsed?.error || parsed?.message || detail;
+      } catch (_) { /* binary response expected; JSON/text means an API error */ }
+      return { success: false, error: detail || `Pollinations returned an invalid ${type} response.` };
+    }
+
+    return {
+      success: true,
+      type,
+      model,
+      buffer: body,
+      contentType: contentType || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
+      provider: 'Pollinations'
+    };
   } catch (error) {
-    const status = error?.response?.status;
-    const detail = error?.response?.data && Buffer.isBuffer(error.response.data)
-      ? error.response.data.toString('utf8').slice(0, 500)
-      : (error?.response?.data?.error || error?.response?.data?.message);
-    return { success: false, error: detail || `Pollinations ${type} generation failed${status ? ` (${status})` : ''}.` };
+    const code = error?.code;
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') {
+      return { success: false, error: `Pollinations ${type} generation timed out. Video generation can take several minutes; please try again.` };
+    }
+    return { success: false, error: error?.message || `Pollinations ${type} generation failed.` };
   }
 };
 

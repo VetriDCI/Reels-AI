@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import { cloudinary } from '../config/cloudinary.js';
 import { spawn } from 'child_process';
+import { mkdtemp, writeFile, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join, posix } from 'path';
 import groqAI from '../services/groqAIService.js';
 
 const prisma = new PrismaClient();
@@ -21,10 +24,84 @@ const runPdfTextExtraction = (buffer) => new Promise((resolve) => {
   child.stdin.end(buffer);
 });
 
+const ZIP_TEXT_EXTENSIONS = /\.(txt|md|json|csv|log|xml|html|htm|css|js|jsx|mjs|cjs|ts|tsx|sql|prisma|graphql|gql|yaml|yml|toml|ini|conf|env|sh|bash|py|java|kt|go|rs|rb|php|c|h|cpp|hpp|cs|swift|vue|svelte)$/i;
+const ZIP_TEXT_BASENAMES = /^(readme(?:\.[^.]*)?|license(?:\.[^.]*)?|dockerfile|makefile|compose\.ya?ml|\.env(?:\..*)?)$/i;
+const ZIP_SKIP_PARTS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.vite', 'vendor']);
+
+const runUnzipList = (zipPath) => new Promise((resolve) => {
+  const child = spawn('unzip', ['-Z1', zipPath], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); if (output.length > 1000000) child.kill(); });
+  child.on('error', () => resolve([]));
+  child.on('close', (code) => resolve(code === 0 ? output.split(/\r?\n/).filter(Boolean) : []));
+});
+
+const runUnzipFile = (zipPath, entryName, maxChars = 12000) => new Promise((resolve) => {
+  const child = spawn('unzip', ['-p', zipPath, entryName], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let output = '';
+  let truncated = false;
+  child.stdout.on('data', (chunk) => {
+    if (output.length < maxChars) {
+      output += chunk.toString('utf8');
+      if (output.length >= maxChars) { output = output.slice(0, maxChars); truncated = true; child.kill(); }
+    }
+  });
+  child.on('error', () => resolve(''));
+  child.on('close', () => resolve(output + (truncated ? '\n[truncated]' : '')));
+});
+
+const extractZipText = async (buffer) => {
+  const dir = await mkdtemp(join(tmpdir(), 'ra-ai-zip-'));
+  const zipPath = join(dir, 'upload.zip');
+  try {
+    await writeFile(zipPath, buffer);
+    const entries = await runUnzipList(zipPath);
+    const candidates = entries.filter((entry) => {
+      const normalized = entry.replaceAll('\\', '/').replace(/^\/+/, '');
+      if (!normalized || normalized.endsWith('/')) return false;
+      if (normalized.split('/').some((part) => ZIP_SKIP_PARTS.has(part))) return false;
+      if (normalized.split('/').includes('..')) return false;
+      const base = posix.basename(normalized);
+      return ZIP_TEXT_EXTENSIONS.test(base) || ZIP_TEXT_BASENAMES.test(base);
+    }).sort((a, b) => {
+      const priority = (name) => {
+        const n = name.toLowerCase();
+        if (/\/(package(-lock)?\.json|vite\.config|vercel\.json|prisma\/schema\.prisma|readme)/.test(n) || /(^|\/)(package(-lock)?\.json|vite\.config|vercel\.json|schema\.prisma|readme)/.test(n)) return 100;
+        if (/\/(frontend|backend)\/src\//.test(n)) return 90;
+        if (/\/(frontend|backend)\//.test(n)) return 70;
+        return 50;
+      };
+      return priority(b) - priority(a);
+    }).slice(0, 80);
+
+    const sections = [];
+    let total = 0;
+    for (const entry of candidates) {
+      if (total >= 50000) break;
+      const remaining = Math.min(12000, 50000 - total);
+      const text = await runUnzipFile(zipPath, entry, remaining);
+      if (!text.trim()) continue;
+      const section = `FILE: ${entry}\n${text}`;
+      sections.push(section);
+      total += section.length + 2;
+    }
+    if (!sections.length) return '';
+    return `ZIP PROJECT CONTENTS (text/code files extracted automatically):\n\n${sections.join('\n\n---\n\n')}`.slice(0, 50000);
+  } catch (error) {
+    console.error('ZIP extraction error:', error);
+    return '';
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+};
+
 const extractAIFileText = async (file) => {
   const name = file.originalname || '';
   const mime = file.mimetype || '';
-  if (mime.startsWith('text/') || /\.(txt|md|json|csv|log|xml|html|css|js|jsx|ts|tsx|sql)$/i.test(name)) {
+  if (mime === 'application/zip' || mime === 'application/x-zip-compressed' || /\.zip$/i.test(name)) {
+    return extractZipText(file.buffer);
+  }
+  if (mime.startsWith('text/') || /\.(txt|md|json|csv|log|xml|html|htm|css|js|jsx|mjs|cjs|ts|tsx|sql|prisma|graphql|gql|yaml|yml|toml|ini|conf|env|sh|bash|py|java|kt|go|rs|rb|php|c|h|cpp|hpp|cs|swift|vue|svelte)$/i.test(name)) {
     return file.buffer.toString('utf8').slice(0, 50000);
   }
   if (mime === 'application/pdf' || /\.pdf$/i.test(name)) {
@@ -54,7 +131,6 @@ export const uploadAIFile = async (req, res) => {
     if (oversizedVision) return res.status(400).json({ success: false, message: 'Image files must be 20 MB or smaller for Groq Vision.' });
     const files = await Promise.all(req.files.map(async (file) => {
       const result = await uploadBuffer(file);
-      const isText = file.mimetype?.startsWith('text/') || /\.(txt|md|json|csv|log)$/i.test(file.originalname);
       const extractedText = await extractAIFileText(file);
       const textPreview = extractedText ? extractedText.slice(0, 20000) : null;
       return {
@@ -116,24 +192,30 @@ export const deleteAIConversation = async (req, res) => {
 
 export const deepResearch = async (req, res) => {
   try {
-    const { topic = '', depth = 'standard' } = req.body || {};
+    const { topic = '', depth = 'standard', conversationId } = req.body || {};
     if (!topic.trim()) return res.status(400).json({ success: false, message: 'Research topic is required' });
+    let conversation = conversationId
+      ? await prisma.aIConversation.findFirst({ where: { id: conversationId, userId: req.userId } })
+      : null;
+    if (conversationId && !conversation) return res.status(404).json({ success: false, message: 'AI conversation not found' });
+    if (!conversation) conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title: `Research: ${topic.trim().slice(0, 65)}` } });
+
     const result = await groqAI.deepResearch(topic.trim(), { depth });
-    if (!result.success) return res.status(500).json({ success: false, message: result.error });
+    if (!result.success) return res.status(500).json({ success: false, message: result.error, conversationId: conversation.id });
+
+    await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'user', content: topic.trim() } });
+    const assistant = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'assistant', content: result.response, model: result.model || null } });
+    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
     res.json({ success: true, data: {
-      response: result.response,
-      model: result.model,
-      language: result.language,
-      depth: result.depth,
-      executedTools: result.executedTools || [],
-      sources: result.sources || []
+      response: result.response, model: result.model, language: result.language, depth: result.depth,
+      executedTools: result.executedTools || [], sources: result.sources || [],
+      conversationId: conversation.id, messageId: assistant.id
     }});
   } catch (error) {
     console.error('Deep research error:', error);
     res.status(500).json({ success: false, message: 'Deep research failed' });
   }
 };
-
 
 
 export const codingAI = async (req, res) => {
@@ -190,16 +272,23 @@ export const socialAI = async (req, res) => {
 export const analyzeAIFiles = async (req, res) => {
   try {
     if (!req.files?.length) return res.status(400).json({ success: false, message: 'No files uploaded' });
-    const { task = 'summarize', question = '' } = req.body || {};
+    const { task = 'summarize', question = '', conversationId } = req.body || {};
     const allowedTasks = new Set(['summarize', 'extract', 'compare', 'qa', 'outline', 'translate']);
     const selectedTask = allowedTasks.has(task) ? task : 'summarize';
+    let conversation = conversationId
+      ? await prisma.aIConversation.findFirst({ where: { id: conversationId, userId: req.userId } })
+      : null;
+    if (conversationId && !conversation) return res.status(404).json({ success: false, message: 'AI conversation not found' });
+    if (!conversation) conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title: `Files: ${(question || selectedTask).trim().slice(0, 65)}` } });
+
     const extracted = [];
     for (const file of req.files.slice(0, 6)) {
       const text = await extractAIFileText(file);
       extracted.push({ name: file.originalname, mimeType: file.mimetype, size: file.size, text: text.slice(0, 50000) });
     }
     const usable = extracted.filter((item) => item.text.trim());
-    if (!usable.length) return res.status(400).json({ success: false, message: 'These files do not contain directly extractable text yet. Try a text-based PDF/TXT/CSV/JSON/Markdown file.' });
+    if (!usable.length) return res.status(400).json({ success: false, message: 'No readable text was found. ZIP files, code/text files and text-based PDFs are supported; binary files may need a more specific AI mode.', conversationId: conversation.id });
+
     const languageInfo = groqAI._detectLanguage(question || selectedTask);
     const instructions = {
       summarize: 'Summarize each file and then give a combined summary. Preserve important facts, numbers and caveats.',
@@ -211,14 +300,18 @@ export const analyzeAIFiles = async (req, res) => {
     }[selectedTask];
     const context = usable.map((item, i) => `FILE ${i + 1}: ${item.name}\n${item.text}`).join('\n\n---\n\n');
     const result = await groqAI.analyzeFileText(instructions, context, languageInfo);
-    if (!result.success) return res.status(500).json({ success: false, message: result.error });
-    res.json({ success: true, data: { response: result.response, model: result.model, language: result.language, task: selectedTask, files: extracted.map(({ name, mimeType, size }) => ({ name, mimeType, size })) } });
+    if (!result.success) return res.status(500).json({ success: false, message: result.error, conversationId: conversation.id });
+
+    const userContent = question.trim() || `${selectedTask} the attached file(s).`;
+    await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'user', content: userContent, attachments: extracted.map(({ name, mimeType, size }) => ({ name, mimeType, size })) } });
+    const assistant = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'assistant', content: result.response, model: result.model || null } });
+    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
+    res.json({ success: true, data: { response: result.response, model: result.model, language: result.language, task: selectedTask, files: extracted.map(({ name, mimeType, size }) => ({ name, mimeType, size })), conversationId: conversation.id, messageId: assistant.id } });
   } catch (error) {
     console.error('AI file analysis error:', error);
     res.status(500).json({ success: false, message: 'Failed to analyze files' });
   }
 };
-
 
 
 export const dataAI = async (req, res) => {
@@ -276,21 +369,33 @@ export const writingAI = async (req, res) => {
 
 export const creativeAI = async (req, res) => {
   try {
-    const { request = '', task = 'idea', style = 'creative' } = req.body || {};
+    const { request = '', task = 'idea', style = 'creative', conversationId } = req.body || {};
     if (!request.trim()) return res.status(400).json({ success: false, message: 'Creative request is required' });
+    let conversation = conversationId ? await prisma.aIConversation.findFirst({ where: { id: conversationId, userId: req.userId } }) : null;
+    if (conversationId && !conversation) return res.status(404).json({ success: false, message: 'AI conversation not found' });
+    if (!conversation) conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title: `Creative: ${request.trim().slice(0, 65)}` } });
     const result = await groqAI.creativeAI(request.trim(), { task, style });
-    if (!result.success) return res.status(500).json({ success: false, message: result.error });
-    res.json({ success: true, data: { response: result.response, model: result.model, language: result.language, creativeAI: true, task, style } });
+    if (!result.success) return res.status(500).json({ success: false, message: result.error, conversationId: conversation.id });
+    await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'user', content: request.trim() } });
+    const assistant = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'assistant', content: result.response, model: result.model || null } });
+    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
+    res.json({ success: true, data: { response: result.response, model: result.model, language: result.language, creativeAI: true, task, style, conversationId: conversation.id, messageId: assistant.id } });
   } catch (error) { console.error('Creative AI error:', error); res.status(500).json({ success: false, message: 'Creative AI failed' }); }
 };
 
 export const videoAI = async (req, res) => {
   try {
-    const { request = '', task = 'storyboard', duration = 'short' } = req.body || {};
+    const { request = '', task = 'storyboard', duration = 'short', conversationId } = req.body || {};
     if (!request.trim()) return res.status(400).json({ success: false, message: 'Video request is required' });
+    let conversation = conversationId ? await prisma.aIConversation.findFirst({ where: { id: conversationId, userId: req.userId } }) : null;
+    if (conversationId && !conversation) return res.status(404).json({ success: false, message: 'AI conversation not found' });
+    if (!conversation) conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title: `Video: ${request.trim().slice(0, 65)}` } });
     const result = await groqAI.videoAI(request.trim(), { task, duration });
-    if (!result.success) return res.status(500).json({ success: false, message: result.error });
-    res.json({ success: true, data: { response: result.response, model: result.model, language: result.language, videoAI: true, task, duration } });
+    if (!result.success) return res.status(500).json({ success: false, message: result.error, conversationId: conversation.id });
+    await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'user', content: request.trim() } });
+    const assistant = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'assistant', content: result.response, model: result.model || null } });
+    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
+    res.json({ success: true, data: { response: result.response, model: result.model, language: result.language, videoAI: true, task, duration, conversationId: conversation.id, messageId: assistant.id } });
   } catch (error) { console.error('Video AI error:', error); res.status(500).json({ success: false, message: 'Video AI failed' }); }
 };
 
@@ -308,10 +413,13 @@ export const transcribeAI = async (req, res) => {
 
 
 const uploadGeneratedMedia = (buffer, contentType, type) => new Promise((resolve, reject) => {
+  const isVideo = type === 'video';
   const stream = cloudinary.uploader.upload_stream({
     folder: 'ra-social/ai-generated',
-    resource_type: type === 'video' ? 'video' : 'image',
-    public_id: `gen_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+    resource_type: isVideo ? 'video' : 'image',
+    public_id: `gen_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    chunk_size: isVideo ? 6 * 1024 * 1024 : undefined,
+    timeout: isVideo ? 600000 : 120000
   }, (error, result) => error ? reject(error) : resolve(result));
   stream.end(buffer);
 });
@@ -328,10 +436,11 @@ export const generateAIImage = async (req, res) => {
     if (!conversation) conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title: `Image: ${prompt.trim().slice(0, 65)}` } });
     await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'user', content: prompt.trim() } });
     const message = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'assistant', content: 'Image generated successfully.', model: result.model || null, attachments: [{ url, type: 'image', name: 'AI generated image', provider: result.provider }] } });
+    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
     res.json({ success: true, data: { url, type: 'image', model: result.model, provider: result.provider, conversationId: conversation.id, messageId: message.id } });
   } catch (error) {
     console.error('AI image generation error:', error);
-    res.status(500).json({ success: false, message: 'Image generation failed' });
+    res.status(500).json({ success: false, message: error?.message || 'Image generation failed' });
   }
 };
 
@@ -347,10 +456,11 @@ export const generateAIVideo = async (req, res) => {
     if (!conversation) conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title: `Video: ${prompt.trim().slice(0, 65)}` } });
     await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'user', content: prompt.trim() } });
     const message = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'assistant', content: 'Video generated successfully.', model: result.model || null, attachments: [{ url, type: 'video', name: 'AI generated video', provider: result.provider }] } });
+    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
     res.json({ success: true, data: { url, type: 'video', model: result.model, provider: result.provider, duration, conversationId: conversation.id, messageId: message.id } });
   } catch (error) {
     console.error('AI video generation error:', error);
-    res.status(500).json({ success: false, message: 'Video generation failed' });
+    res.status(500).json({ success: false, message: error?.message || 'Video generation failed' });
   }
 };
 

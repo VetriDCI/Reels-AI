@@ -3,6 +3,34 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import prisma from '../config/database.js';
 
+
+export const checkUsername = async (req, res) => {
+  try {
+    const username = String(req.query.username || '').trim();
+
+    if (!username) {
+      return res.json({ success: true, data: { available: false, reason: 'empty' } });
+    }
+
+    if (username.length < 3) {
+      return res.json({ success: true, data: { available: false, reason: 'too_short' } });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { username },
+      select: { id: true }
+    });
+
+    return res.json({
+      success: true,
+      data: { available: !existingUser }
+    });
+  } catch (error) {
+    console.error('Check username error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to check username' });
+  }
+};
+
 export const register = async (req, res) => {
   try {
     const { username, email, password, fullName, phoneNumber } = req.body;
