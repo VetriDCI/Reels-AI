@@ -107,8 +107,16 @@ app.get('/', (req, res) => res.json({ success: true, message: 'RA Social API is 
 // even on hosting plans without shell/SSH access (e.g. Render free tier).
 async function ensureDefaultAdmin() {
   try {
-    const email = process.env.DEFAULT_ADMIN_EMAIL || 'admin@rasocial.com';
-    const password = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+    const email = process.env.DEFAULT_ADMIN_EMAIL;
+    const password = process.env.DEFAULT_ADMIN_PASSWORD;
+
+    // Never create a production admin with a hard-coded password.
+    // Configure DEFAULT_ADMIN_EMAIL/PASSWORD on the hosting provider when
+    // an initial admin account needs to be bootstrapped.
+    if (!email || !password) {
+      console.log('ℹ️  Default admin bootstrap skipped: DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD are not configured.');
+      return;
+    }
 
     const existing = await prisma.user.findUnique({ where: { email } });
 

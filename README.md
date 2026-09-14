@@ -8,11 +8,11 @@ Admin panel talk to this SAME backend — do not deploy two separate backends.
 - `backend/`   → Deploy to Render (your existing "Reels AI" service).
                  This single backend now includes:
                    - Normal user auth (register/login/profile)
-                   - Forgot password → OTP (demo: 123456) → Reset password
+                   - Forgot password → OTP reset flow (requires the configured reset/OTP delivery setup) → Reset password
                    - Change password (logged-in users)
                    - Admin login + admin dashboard APIs (stats/users/posts)
                    - Auto-creates a default admin account on startup
-                     (admin@rasocial.com / admin123) — no Shell needed.
+                     (an administrator account configured through DEFAULT_ADMIN_EMAIL / DEFAULT_ADMIN_PASSWORD) — no Shell needed.
                    - Auto-runs database migrations on every deploy.
 
 - `frontend/`  → Deploy to Vercel / GitHub Pages (your existing RA Social

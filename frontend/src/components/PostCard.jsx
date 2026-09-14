@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Heart, MessageSquare, Share2, Send, X, Eye, Download, MoreHorizontal, Link2, Flag, Play, ExternalLink, Reply, ChevronDown } from 'lucide-react';
-import { postAPI, followAPI } from '../services/api';
+import { postAPI, followAPI, reportAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
 
@@ -116,7 +116,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
             {post.mediaUrl && <button onClick={() => { window.open(post.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuOpen(false); }} className="menu-item"><ExternalLink className="w-4 h-4" />Open media</button>}
             <button onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/?post=${post.id}`); alert('Post link copied'); } catch {} setMenuOpen(false); }} className="menu-item"><Link2 className="w-4 h-4" />Copy link</button>
             {profileMode && user?.id === post.user?.id && <><button onClick={handleHide} className="menu-item"><Eye className="w-4 h-4" />Hide post</button><button onClick={handleDelete} className="menu-item text-red-600"><X className="w-4 h-4" />Delete post</button></>}
-            <button onClick={() => { alert('Post reported.'); setMenuOpen(false); }} className="menu-item text-red-600"><Flag className="w-4 h-4" />Report</button>
+            <button onClick={() => { (async () => { const reason = window.prompt('Why are you reporting this post?', 'Inappropriate content'); if (!reason) return; try { await reportAPI.create(post.id, reason); alert('Report submitted.'); } catch (e) { alert(e.response?.data?.message || 'Failed to report post'); } finally { setMenuOpen(false); } })(); }} className="menu-item text-red-600"><Flag className="w-4 h-4" />Report</button>
           </div>}
         </div>
       </div>

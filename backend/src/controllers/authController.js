@@ -73,13 +73,23 @@ export const register = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { identifier, email, password } = req.body;
+    const loginIdentifier = String(identifier ?? email ?? '').trim();
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required' });
+    if (!loginIdentifier || !password) {
+      return res.status(400).json({ success: false, message: 'Email, username or phone number and password are required' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const normalizedPhone = loginIdentifier.replace(/\D/g, '');
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: loginIdentifier.toLowerCase() },
+          { username: loginIdentifier },
+          ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])
+        ]
+      }
+    });
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -172,62 +182,66 @@ export const updateProfile = async (req, res) => {
   }
 };
 
-// POST /api/auth/forgot-password
-// NOTE: No SMS/email provider is wired up in this project yet, so a real OTP
-// can't be delivered. This uses a fixed demo OTP (123456) so the reset flow
-// is fully functional end-to-end for testing/demo — replace with a real
-// SMS/email provider (e.g. Twilio, Resend) before going to production.
+// Password reset OTPs are random, short-lived and stored only as bcrypt hashes.
+// Production delivery uses Resend. Development can explicitly expose the random OTP.
+const sendPasswordResetEmail = async ({ to, otp }) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL;
+  if (!apiKey || !from) throw new Error('Password reset email service is not configured');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from, to: [to], subject: 'RA Social password reset OTP',
+      html: `<p>Your RA Social password reset code is <strong>${otp}</strong>.</p><p>This code expires in 10 minutes.</p>`,
+    }),
+  });
+  if (!response.ok) throw new Error(`Resend email failed: ${response.status}`);
+};
+
 export const forgotPassword = async (req, res) => {
   try {
-    const { identifier } = req.body;
-
-    if (!identifier) {
-      return res.status(400).json({ success: false, message: 'Email, mobile or username is required' });
-    }
-
+    const identifier = String(req.body?.identifier || '').trim();
+    if (!identifier) return res.status(400).json({ success: false, message: 'Email, mobile or username is required' });
+    const normalizedPhone = identifier.replace(/\D/g, '');
     const user = await prisma.user.findFirst({
-      where: { OR: [{ email: identifier }, { username: identifier }] }
+      where: { OR: [{ email: identifier.toLowerCase() }, { username: identifier }, ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])] },
+      select: { id: true, email: true },
     });
+    if (!user) return res.json({ success: true, message: 'If an account matches, reset instructions will be sent.' });
 
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'No account found with that email/username' });
-    }
+    const otp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = await bcrypt.hash(otp, 10);
+    const challenge = await prisma.passwordResetChallenge.create({
+      data: { userId: user.id, otpHash, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+      select: { id: true },
+    });
+    const devMode = process.env.NODE_ENV !== 'production' && process.env.PASSWORD_RESET_DEV_MODE === 'true';
+    if (!devMode) await sendPasswordResetEmail({ to: user.email, otp });
 
-    res.json({ success: true, message: 'OTP sent (demo mode: use 123456)', data: { demoOtp: '123456' } });
+    res.json({ success: true, message: devMode ? 'OTP generated in development mode.' : 'If an account matches, reset instructions will be sent.', data: { challengeId: challenge.id, ...(devMode ? { devOtp: otp } : {}) } });
   } catch (error) {
     console.error('Forgot password error:', error);
+    if (error.message?.includes('not configured') || error.message?.includes('Resend email failed')) return res.status(503).json({ success: false, message: 'Password reset email service is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.' });
     res.status(500).json({ success: false, message: 'Failed to process request' });
   }
 };
 
-// POST /api/auth/verify-otp
 export const verifyOtp = async (req, res) => {
   try {
-    const { identifier, otp } = req.body;
-
-    if (!identifier || !otp) {
-      return res.status(400).json({ success: false, message: 'Identifier and OTP are required' });
-    }
-
-    if (otp !== '123456') {
-      return res.status(400).json({ success: false, message: 'Invalid OTP' });
-    }
-
-    const user = await prisma.user.findFirst({
-      where: { OR: [{ email: identifier }, { username: identifier }] }
-    });
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Account not found' });
-    }
-
-    const resetToken = jwt.sign({ userId: user.id, purpose: 'reset' }, process.env.JWT_SECRET, { expiresIn: '10m' });
-
+    const { identifier, otp, challengeId } = req.body;
+    if (!identifier || !otp || !challengeId) return res.status(400).json({ success: false, message: 'Identifier, OTP and challenge are required' });
+    const challenge = await prisma.passwordResetChallenge.findUnique({ where: { id: challengeId } });
+    if (!challenge || challenge.usedAt || challenge.verifiedAt || challenge.expiresAt < new Date()) return res.status(401).json({ success: false, message: 'OTP expired or already used' });
+    const valid = await bcrypt.compare(String(otp), challenge.otpHash);
+    if (!valid) return res.status(400).json({ success: false, message: 'Invalid OTP' });
+    const normalizedPhone = String(identifier).replace(/\D/g, '');
+    const user = await prisma.user.findFirst({ where: { id: challenge.userId, OR: [{ email: String(identifier).toLowerCase() }, { username: identifier }, ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])] }, select: { id:true } });
+    if (!user) return res.status(400).json({ success: false, message: 'Invalid reset request' });
+    await prisma.passwordResetChallenge.update({ where: { id: challenge.id }, data: { verifiedAt: new Date() } });
+    const resetToken = jwt.sign({ userId: user.id, purpose: 'reset', challengeId: challenge.id }, process.env.JWT_SECRET, { expiresIn: '10m' });
     res.json({ success: true, message: 'OTP verified', data: { resetToken } });
-  } catch (error) {
-    console.error('Verify OTP error:', error);
-    res.status(500).json({ success: false, message: 'Failed to verify OTP' });
-  }
+  } catch (error) { console.error('Verify OTP error:', error); res.status(500).json({ success: false, message: 'Failed to verify OTP' }); }
 };
 
 // POST /api/auth/reset-password
@@ -249,15 +263,20 @@ export const resetPassword = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Reset link expired, please try again' });
     }
 
-    if (decoded.purpose !== 'reset') {
+    if (decoded.purpose !== 'reset' || !decoded.challengeId) {
       return res.status(401).json({ success: false, message: 'Invalid reset token' });
     }
 
+    const challenge = await prisma.passwordResetChallenge.findUnique({ where: { id: decoded.challengeId } });
+    if (!challenge || challenge.userId !== decoded.userId || !challenge.verifiedAt || challenge.usedAt || challenge.expiresAt < new Date()) {
+      return res.status(401).json({ success: false, message: 'Reset request is invalid or expired' });
+    }
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword, salt);
-
-    await prisma.user.update({ where: { id: decoded.userId }, data: { passwordHash } });
-
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: decoded.userId }, data: { passwordHash } }),
+      prisma.passwordResetChallenge.update({ where: { id: decoded.challengeId }, data: { usedAt: new Date() } }),
+    ]);
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
     console.error('Reset password error:', error);

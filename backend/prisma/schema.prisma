@@ -40,6 +40,9 @@ model User {
   messages      Message[]
   aiConversations AIConversation[]
   aiMemories     AIMemory[]
+  reportsFiled   Report[] @relation("reporter")
+  broadcastsSent Broadcast[]
+  passwordResetChallenges PasswordResetChallenge[]
 
   @@index([username])
   @@index([email])
@@ -60,6 +63,7 @@ model Post {
   comments    Comment[]
   notifications Notification[]
   hashtags    PostHashtag[]
+  reports     Report[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -211,4 +215,49 @@ model AIMessage {
 
   @@index([conversationId])
   @@index([createdAt])
+}
+
+
+model Report {
+  id         String   @id @default(uuid())
+  reporterId String
+  reporter   User     @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reason     String
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([reporterId, postId])
+  @@index([postId])
+  @@index([status])
+}
+
+model Broadcast {
+  id              String   @id @default(uuid())
+  senderId        String
+  sender          User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  title           String
+  message         String
+  audience        String   @default("all_users")
+  recipientCount  Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+
+model PasswordResetChallenge {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otpHash   String
+  expiresAt DateTime
+  verifiedAt DateTime?
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }

@@ -1,6 +1,6 @@
 // One-time script to create (or promote) an admin account.
 // Run from the backend folder:
-//   node src/scripts/createAdmin.js admin@rasocial.com admin123 "Admin User"
+//   node src/scripts/createAdmin.js <admin-email> <strong-password> "Admin User"
 
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';

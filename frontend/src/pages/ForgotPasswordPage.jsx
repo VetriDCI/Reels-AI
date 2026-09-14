@@ -14,8 +14,8 @@ export default function ForgotPasswordPage() {
     setError('');
     setLoading(true);
     try {
-      await api.post('/auth/forgot-password', { identifier });
-      navigate('/verify-otp', { state: { identifier } });
+      const response = await api.post('/auth/forgot-password', { identifier });
+      navigate('/verify-otp', { state: { identifier, challengeId: response.data?.data?.challengeId, devOtp: response.data?.data?.devOtp } });
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to send OTP');
     } finally {
@@ -63,9 +63,7 @@ export default function ForgotPasswordPage() {
           </button>
         </form>
 
-        <div className="mt-4 bg-blue-50 text-blue-700 text-sm px-4 py-3 rounded-xl text-center">
-          Demo OTP will be <b>123456</b> (no SMS/email service connected yet)
-        </div>
+        <div className="mt-4 bg-blue-50 text-blue-700 text-sm px-4 py-3 rounded-xl text-center">A one-time code will be sent to the account email when password-reset email delivery is configured.</div>
       </div>
     </div>
   );

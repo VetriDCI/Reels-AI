@@ -7,6 +7,8 @@ export default function OtpVerificationPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const identifier = location.state?.identifier || '';
+  const challengeId = location.state?.challengeId || '';
+  const devOtp = location.state?.devOtp || '';
   const [digits, setDigits] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,7 +37,7 @@ export default function OtpVerificationPage() {
     }
     setLoading(true);
     try {
-      const res = await api.post('/auth/verify-otp', { identifier, otp });
+      const res = await api.post('/auth/verify-otp', { identifier, otp, challengeId });
       navigate('/reset-password', { state: { resetToken: res.data.data.resetToken } });
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid OTP');
@@ -55,7 +57,7 @@ export default function OtpVerificationPage() {
         </div>
 
         <h1 className="text-2xl font-bold mb-1">Enter OTP</h1>
-        <p className="text-gray-500 text-sm mb-6">We sent a 6-digit code (demo: 123456)</p>
+        <p className="text-gray-500 text-sm mb-6">We sent a 6-digit one-time code{devOtp ? ` (development: ${devOtp})` : ''}</p>
 
         {error && <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>}
 

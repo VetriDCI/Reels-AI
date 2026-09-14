@@ -12,18 +12,14 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
+    config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
-
-  // Let the browser/Axios add the multipart boundary for FormData uploads.
-  // The global JSON Content-Type must not be sent with file uploads.
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
-    if (config.headers) {
-      delete config.headers['Content-Type'];
-      delete config.headers['content-type'];
-    }
+    config.headers = config.headers || {};
+    delete config.headers['Content-Type'];
+    delete config.headers['content-type'];
   }
-
   return config;
 });
 
@@ -41,7 +37,8 @@ export const uploadAPI = {
     const formData = new FormData();
     formData.append('file', file);
     return api.post('/posts/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      // Let Axios/browser set the multipart boundary automatically.
+      headers: {}
     });
   }
 };
@@ -56,6 +53,10 @@ export const postAPI = {
   addComment: (id, content) => api.post(`/posts/${id}/comments`, { content }),
   view: (id) => api.post(`/posts/${id}/view`),
   download: (id) => `${API_URL}/posts/${id}/download`
+};
+
+export const reportAPI = {
+  create: (postId, reason) => api.post(`/posts/${postId}/report`, { reason }),
 };
 
 export const monetizationAPI = {

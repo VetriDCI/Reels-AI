@@ -65,30 +65,27 @@ export const adminForgotPassword = async (req, res) => {
 // GET /api/admin/stats
 export const getAdminStats = async (req, res) => {
   try {
-    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, likesCount] = await Promise.all([
+    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, totalViewsAgg, pendingReports] = await Promise.all([
       prisma.user.count(),
       prisma.post.count(),
       prisma.post.count({ where: { mediaType: 'video' } }),
       prisma.user.count({ where: { status: 'active' } }),
       prisma.user.aggregate({ _sum: { earnings: true } }),
-      prisma.like.count(),
+      prisma.post.aggregate({ _sum: { viewCount: true } }),
+      prisma.report.count({ where: { status: 'pending' } }),
     ]);
 
-    // Payouts and content-reporting features aren't built yet (no Payout or
-    // Report models exist in the schema), so these stay at 0 until those
-    // features are added rather than showing fabricated numbers.
-    // totalViews isn't tracked yet either — estimated from likes (same
-    // approximation the app already uses on the Reels/Home feed) so the
-    // dashboard has a real number instead of crashing on a missing field.
+    // Payout requests are not implemented yet, so pendingPayouts remains 0.
+    // Views and pending reports come from the real database fields/models.
     res.json({
       totalUsers,
       totalPosts,
       totalReels,
       pendingPayouts: 0,
       activeUsers,
-      reportedContent: 0,
+      reportedContent: pendingReports,
       totalEarnings: earningsAgg._sum.earnings || 0,
-      totalViews: likesCount * 8,
+      totalViews: totalViewsAgg._sum.viewCount || 0,
     });
   } catch (error) {
     console.error('Admin stats error:', error);
@@ -99,34 +96,13 @@ export const getAdminStats = async (req, res) => {
 // GET /api/admin/users?limit=5
 export const getAdminUsers = async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
-
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        username: true,
-        fullName: true,
-        email: true,
-        status: true,
-        earnings: true,
-        createdAt: true,
-      },
-    });
-
-    // Mapped to snake_case to match what the admin dashboard UI expects.
-    const mapped = users.map((u) => ({
-      id: u.id,
-      username: u.username,
-      full_name: u.fullName,
-      email: u.email,
-      status: u.status,
-      earnings: u.earnings,
-      created_at: u.createdAt,
-    }));
-
-    res.json(mapped);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 200);
+    const status = String(req.query.status || 'all');
+    const sort = String(req.query.sort || 'joined');
+    const where = status !== 'all' && ['active', 'blocked', 'pending'].includes(status) ? { status } : {};
+    const orderBy = sort === 'earnings' ? { earnings: 'desc' } : { createdAt: 'desc' };
+    const users = await prisma.user.findMany({ where, orderBy, take: limit, select: { id:true, username:true, fullName:true, email:true, status:true, earnings:true, monetizationStatus:true, createdAt:true } });
+    res.json(users.map((u) => ({ id:u.id, username:u.username, full_name:u.fullName, email:u.email, status:u.status, earnings:u.earnings, monetization_status:u.monetizationStatus, created_at:u.createdAt })));
   } catch (error) {
     console.error('Admin users error:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -137,8 +113,11 @@ export const getAdminUsers = async (req, res) => {
 export const getAdminPosts = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
-    const { status } = req.query;
-    const where = status && status !== 'all' ? { status } : {};
+    const { status, type } = req.query;
+    const where = {
+      ...(status && status !== 'all' ? { status } : {}),
+      ...(type === 'video' ? { mediaType: 'video' } : {}),
+    };
 
     const posts = await prisma.post.findMany({
       where,
@@ -159,6 +138,7 @@ export const getAdminPosts = async (req, res) => {
       author: p.user?.fullName || p.user?.username || 'Unknown',
       likes_count: p.likes.length,
       comments_count: p.comments.length,
+      views: p.viewCount || 0,
       status: p.status,
       created_at: p.createdAt,
     }));
@@ -311,4 +291,50 @@ export const updateMonetizationApplication = async (req, res) => {
     console.error('Update monetization application error:', error);
     res.status(500).json({ error: 'Failed to update monetization application' });
   }
+};
+
+
+export const getAdminReports = async (req, res) => {
+  try {
+    const status = String(req.query.status || 'all');
+    const reports = await prisma.report.findMany({
+      where: status !== 'all' && ['pending','reviewed','resolved','dismissed'].includes(status) ? { status } : {},
+      orderBy: { createdAt: 'desc' }, take: 100,
+      include: { reporter: { select: { id:true, username:true, fullName:true } }, post: { select: { id:true, content:true, mediaUrl:true, mediaType:true, status:true } } }
+    });
+    res.json(reports);
+  } catch (error) { console.error('Admin reports error:', error); res.status(500).json({ error:'Failed to fetch reports' }); }
+};
+
+export const updateReportStatus = async (req, res) => {
+  try {
+    const status = String(req.body?.status || '');
+    if (!['pending','reviewed','resolved','dismissed'].includes(status)) return res.status(400).json({ error:'Invalid report status' });
+    const report = await prisma.report.update({ where:{ id:req.params.id }, data:{ status } });
+    res.json(report);
+  } catch (error) { console.error('Update report error:', error); res.status(500).json({ error:'Failed to update report' }); }
+};
+
+export const getBroadcasts = async (req, res) => {
+  try {
+    const broadcasts = await prisma.broadcast.findMany({ orderBy:{ createdAt:'desc' }, take:50 });
+    res.json(broadcasts.map(b => ({ id:b.id, title:b.title, message:b.message, target:b.audience, recipientCount:b.recipientCount, time:b.createdAt })));
+  } catch (error) { console.error('Broadcast list error:', error); res.status(500).json({ error:'Failed to fetch broadcasts' }); }
+};
+
+export const createBroadcast = async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim().slice(0, 120);
+    const message = String(req.body?.message || '').trim().slice(0, 2000);
+    const audience = String(req.body?.targetAudience || 'all_users');
+    if (!title || !message) return res.status(400).json({ error:'Title and message are required' });
+    if (!['all_users','active_users','paid_users'].includes(audience)) return res.status(400).json({ error:'Invalid target audience' });
+    const where = audience === 'active_users' ? { status:'active', role:'user' } : audience === 'paid_users' ? { role:'user', monetizationStatus:'approved' } : { role:'user' };
+    const recipients = await prisma.user.findMany({ where, select:{ id:true } });
+    const broadcast = await prisma.broadcast.create({ data:{ senderId:req.userId, title, message, audience, recipientCount:recipients.length } });
+    if (recipients.length) {
+      await prisma.notification.createMany({ data: recipients.map(u => ({ receiverId:u.id, senderId:req.userId, type:'broadcast', message:`${title}: ${message}` })) });
+    }
+    res.status(201).json({ id:broadcast.id, title, message, target:audience, recipientCount:recipients.length, time:broadcast.createdAt });
+  } catch (error) { console.error('Create broadcast error:', error); res.status(500).json({ error:'Failed to send broadcast' }); }
 };

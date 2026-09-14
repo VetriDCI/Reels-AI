@@ -7,7 +7,8 @@ import {
   addComment,
   deletePost,
   viewPost,
-  hidePost
+  hidePost,
+  reportPost
 } from '../controllers/postController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { upload, cloudinary } from '../config/cloudinary.js';
@@ -45,6 +46,7 @@ router.get('/feed', getFeed);
 router.get('/:id', getPostById);
 router.delete('/:id', protect, deletePost);
 router.patch('/:id/hide', protect, hidePost);
+router.post('/:id/report', protect, reportPost);
 router.post('/:id/view', protect, viewPost);
 router.post('/:id/like', protect, likePost);
 router.post('/:id/comments', protect, addComment);

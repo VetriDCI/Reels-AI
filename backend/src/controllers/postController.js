@@ -225,3 +225,20 @@ export const viewPost = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to record view' });
   }
 };
+
+
+export const reportPost = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const reason = String(req.body?.reason || 'other').trim().slice(0, 200);
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+    const existing = await prisma.report.findUnique({ where: { reporterId_postId: { reporterId: req.userId, postId } } });
+    if (existing) return res.status(409).json({ success: false, message: 'You have already reported this post' });
+    const report = await prisma.report.create({ data: { reporterId: req.userId, postId, reason: reason || 'other' } });
+    res.status(201).json({ success: true, message: 'Report submitted', data: report });
+  } catch (error) {
+    console.error('Report post error:', error);
+    res.status(500).json({ success: false, message: 'Failed to submit report' });
+  }
+};
