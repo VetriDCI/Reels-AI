@@ -36,6 +36,7 @@ function AIFeatures() {
   const [videoDuration, setVideoDuration] = useState('short');
   const [memoryMode, setMemoryMode] = useState(false);
   const [mediaGenerateMode, setMediaGenerateMode] = useState(null);
+  const [aiWorkspace, setAiWorkspace] = useState('text');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoSaveChats, setAutoSaveChats] = useState(() => localStorage.getItem('ra-ai-auto-save') !== 'false');
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('ra-ai-compact') === 'true');
@@ -96,6 +97,7 @@ function AIFeatures() {
     setVideoMode(false);
     setMemoryMode(false);
     setMediaGenerateMode(null);
+    setAiWorkspace('text');
   };
 
   const openConversation = async (id) => {
@@ -148,6 +150,17 @@ function AIFeatures() {
     if (mode === 'memory') { setMemoryMode(true); loadMemories(); }
     if (mode === 'image') setMediaGenerateMode('image');
     if (mode === 'mediaVideo') setMediaGenerateMode('video');
+  };
+
+  const selectTextWorkspace = () => {
+    closeAllModes();
+    setAiWorkspace('text');
+  };
+
+  const selectVideoWorkspace = () => {
+    closeAllModes();
+    setAiWorkspace('video');
+    setMediaGenerateMode('video');
   };
 
   const deleteConversation = async (id, event) => {
@@ -536,7 +549,11 @@ function AIFeatures() {
           <header className="h-14 bg-white/90 backdrop-blur border-b flex items-center px-4 gap-3 sticky top-0 z-10">
             <button className="p-2 rounded-full hover:bg-gray-100" onClick={() => setSidebarOpen((v) => !v)} title="AI history" aria-label="AI history"><Menu size={21} /></button>
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center"><Bot size={20} /></div>
-            <div className="flex-1"><div className="font-semibold text-gray-900">RA Social AI</div><div className="text-[11px] text-green-600">Groq AI • Auto mode</div></div>
+            <div className="flex-1 min-w-0"><div className="font-semibold text-gray-900">RA Social AI</div><div className="text-[11px] text-green-600">Groq AI • Auto mode</div></div>
+            <div className="hidden sm:flex items-center gap-1 rounded-full bg-gray-100 p-1">
+              <button onClick={selectTextWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'text' ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>Text AI</button>
+              <button onClick={selectVideoWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'video' ? 'bg-white shadow text-sky-700' : 'text-gray-500'}`}>Video AI</button>
+            </div>
             <button onClick={() => toggleMode('research')} title="Deep research" className={`p-2 rounded-full border ${researchMode ? 'bg-purple-50 border-purple-300 text-purple-700' : 'hover:bg-gray-50'}`}><Search size={17} /></button>
             <button onClick={() => toggleMode('coding')} title="Coding" className={`p-2 rounded-full border ${codingMode ? 'bg-blue-50 border-blue-300 text-blue-700' : 'hover:bg-gray-50'}`}><Code2 size={17} /></button>
             <button onClick={() => toggleMode('data')} title="Data & Reasoning" className={`p-2 rounded-full border ${dataMode ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'hover:bg-gray-50'}`}><BarChart3 size={17} /></button>
@@ -566,12 +583,17 @@ function AIFeatures() {
             </div>
           )}
 
+          <div className="sm:hidden flex items-center gap-2 px-4 py-2 bg-white border-b">
+            <button onClick={selectTextWorkspace} className={`flex-1 py-2 rounded-full text-sm font-semibold ${aiWorkspace === 'text' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>Text AI</button>
+            <button onClick={selectVideoWorkspace} className={`flex-1 py-2 rounded-full text-sm font-semibold ${aiWorkspace === 'video' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}>Video AI</button>
+          </div>
+
           <section className={`flex-1 overflow-y-auto px-4 py-6 ${compactMode ? 'py-3' : ''}`}>
             {messages.length === 0 ? (
               <div className="max-w-2xl mx-auto text-center pt-12 md:pt-20">
                 <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shadow-lg"><Sparkles size={30} /></div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mt-5">What can I help you with?</h1>
-                <p className="text-gray-500 mt-2">Ask anything. RA Social AI can automatically use web research, website reading, code tools, and image understanding when needed.</p>
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mt-5">{aiWorkspace === 'video' ? 'What video can I create?' : 'What can I help you with?'}</h1>
+                <p className="text-gray-500 mt-2">{aiWorkspace === 'video' ? 'Describe your video and generate it with AI, or use Video AI for storyboards and editing plans.' : 'Ask anything. RA Social AI can automatically use web research, website reading, code tools, and image understanding when needed.'}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8 text-left">
                   {['Analyze this photo', 'Extract text from this image', 'Explain this chart', 'Deep research a topic', 'Calculate / analyze data', 'Write a social post', 'Create a reel script', 'Generate hashtags', 'Create a visual concept', 'Plan a video storyboard', 'Transcribe my voice'].map((text) => (
                     <button key={text} onClick={() => { setInputText(text); if (text.startsWith('Deep research')) setResearchMode(true); if (text.startsWith('Calculate')) setDataMode(true); if (text.startsWith('Write a')) setWritingMode(true); if (text.startsWith('Create a reel')) setSocialMode(true); if (text.startsWith('Create a visual')) setCreativeMode(true); if (text.startsWith('Plan a video')) setVideoMode(true); if (text.startsWith('Transcribe')) audioInputRef.current?.click(); }} className="p-4 rounded-xl bg-white border hover:border-purple-300 hover:shadow-sm text-sm text-gray-700">{text}</button>

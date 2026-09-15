@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  User, Calendar, Briefcase, Wallet, Folder, Shield, Eye, Bell,
-  Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard
+  User, Calendar, Briefcase, Wallet, Folder, Shield, Eye, Bell, Bookmark, Flag,
+  Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard, FileText
 } from 'lucide-react';
 import api, { postAPI } from '../services/api';
 import PostCard from '../components/PostCard';
@@ -21,6 +21,8 @@ import PrivacyVisibilityPage from './settings/PrivacyVisibilityPage';
 import NotificationsSettingsPage from './settings/NotificationsSettingsPage';
 import InterfaceAccessibilityPage from './settings/InterfaceAccessibilityPage';
 import HelpSupportPage from './settings/HelpSupportPage';
+import SavedPostsPage from './SavedPostsPage';
+import AccountDataPage from './settings/AccountDataPage';
 
 const creatorMenuItems = [
   { key: 'analytics', label: 'Creator Analytics', icon: BarChart3, color: 'from-blue-500 to-cyan-400' },
@@ -38,9 +40,10 @@ const accountMenuItems = [
   { key: 'notifications', label: 'Notifications', icon: Bell, color: 'from-orange-400 to-pink-500' },
   { key: 'interface', label: 'Interface & Accessibility', icon: Palette, color: 'from-blue-400 to-purple-500' },
   { key: 'help', label: 'Help & Support', icon: HelpCircle, color: 'from-purple-400 to-pink-400' },
+  { key: 'accountData', label: 'Account Data', icon: Shield, color: 'from-red-500 to-orange-500' },
 ];
 
-export default function MePage({ onLogout, onBack }) {
+export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHistory }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('main');
@@ -109,6 +112,8 @@ export default function MePage({ onLogout, onBack }) {
   if (view === 'notifications') return <NotificationsSettingsPage onBack={back} />;
   if (view === 'interface') return <InterfaceAccessibilityPage onBack={back} />;
   if (view === 'help') return <HelpSupportPage onBack={back} />;
+  if (view === 'accountData') return <AccountDataPage onBack={back} onDeleted={() => onLogout?.()} />;
+  if (view === 'saved') return <SavedPostsPage onBack={back} />;
 
   const postsCount = user?.postsCount ?? user?.posts?.length ?? 0;
   const followersCount = user?.followersCount ?? user?.followers?.length ?? 0;
@@ -207,6 +212,24 @@ export default function MePage({ onLogout, onBack }) {
             </div>
           </div>
         )}
+
+        <button onClick={() => onOpenDrafts?.()} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-purple-50">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center"><FileText className="w-5 h-5 text-white" /></div>
+          <div className="flex-1"><p className="font-bold text-gray-800">Drafts</p><p className="text-xs text-gray-500">Continue posts you saved for later</p></div>
+          <ChevronRight className="w-4 h-4 text-gray-300" />
+        </button>
+
+        <button onClick={() => onOpenReportHistory?.()} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-red-50">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center"><Flag className="w-5 h-5 text-white" /></div>
+          <div className="flex-1"><p className="font-bold text-gray-800">Report History</p><p className="text-xs text-gray-500">Track the posts you reported</p></div>
+          <ChevronRight className="w-4 h-4 text-gray-300" />
+        </button>
+
+        <button onClick={() => setView('saved')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-5 flex items-center gap-3 text-left hover:bg-purple-50">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center"><Bookmark className="w-5 h-5 text-white" /></div>
+          <div className="flex-1"><p className="font-bold text-gray-800">Saved</p><p className="text-xs text-gray-500">Your saved posts and reels</p></div>
+          <ChevronRight className="w-4 h-4 text-gray-300" />
+        </button>
 
         <p className="text-xs text-gray-400 uppercase font-semibold mb-2">My Posts — Manage</p>
         <div className="space-y-4 mb-5">

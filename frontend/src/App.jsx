@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell } from 'lucide-react';
-import { postAPI } from './services/api';
+import { postAPI, notificationAPI } from './services/api';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -10,12 +10,18 @@ import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import OtpVerificationPage from './pages/OtpVerificationPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import TwoFactorLoginPage from './pages/TwoFactorLoginPage';
 import SearchPage from './pages/SearchPage';
+import PublicProfilePage from './pages/PublicProfilePage';
 import NotificationsPage from './pages/NotificationsPage';
 import ChatPage from './pages/ChatPage';
 import ReelsPage from './pages/ReelsPage';
 import AIFeatures from './pages/AIFeatures';
 import MePage from './pages/MePage';
+import SavedPostsPage from './pages/SavedPostsPage';
+import DraftsPage from './pages/DraftsPage';
+import HashtagPage from './pages/HashtagPage';
+import ReportHistoryPage from './pages/ReportHistoryPage';
 import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage';
 
 // Components
@@ -30,11 +36,49 @@ function AppContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [feedRefresh, setFeedRefresh] = useState(0);
   const [reelTarget, setReelTarget] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchSource, setSearchSource] = useState('home');
+  const [publicProfileId, setPublicProfileId] = useState(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [savedReturnTab, setSavedReturnTab] = useState('me');
+  const [draftToEdit, setDraftToEdit] = useState(null);
+  const [hashtagName, setHashtagName] = useState('');
+  const [reportHistory, setReportHistory] = useState(false);
+
+  const openSearch = (query = '') => {
+    setSearchSource(activeTab === 'search' ? 'home' : activeTab);
+    setSearchQuery(query.trim());
+    setActiveTab('search');
+  };
+
+  const openProfile = (id) => { setPublicProfileId(id); setActiveTab('public-profile'); };
+
+  const openHashtag = (name) => { setHashtagName(String(name || '').replace(/^#/, '')); setActiveTab('hashtag'); };
 
   const openReel = (post) => {
     setReelTarget(post);
     setActiveTab('reels');
   };
+
+  useEffect(() => {
+    const refreshUnreadNotifications = async () => {
+      try {
+        const response = await notificationAPI.getNotifications();
+        setUnreadNotificationCount(Number(response.data?.data?.unreadCount || 0));
+      } catch (error) {
+        console.error('Failed to fetch notification count:', error);
+      }
+    };
+
+    refreshUnreadNotifications();
+    const handleNotificationUpdate = () => refreshUnreadNotifications();
+    window.addEventListener('ra:notifications-updated', handleNotificationUpdate);
+    const intervalId = window.setInterval(refreshUnreadNotifications, 30000);
+    return () => {
+      window.removeEventListener('ra:notifications-updated', handleNotificationUpdate);
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -69,6 +113,7 @@ function AppContent() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/verify-otp" element={<OtpVerificationPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/2fa-login" element={<TwoFactorLoginPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -83,23 +128,29 @@ function AppContent() {
         <TopBar
           logout={logout}
           onNotifications={() => setActiveTab('notifications')}
-          onSearch={() => setActiveTab('search')}
+          unreadNotificationCount={unreadNotificationCount}
+          onSearch={openSearch}
           onProfile={() => setActiveTab('me')}
         />
       )}
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
-        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} />}
-        {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} onSearch={() => setActiveTab('search')} initialPostId={reelTarget?.id} />}
+        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} onSearch={openSearch} />}
+        {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} initialPostId={reelTarget?.id} />}
         {activeTab === 'ai' && <AIFeatures />}
         {activeTab === 'chat' && <ChatPage />}
-        {activeTab === 'me' && <MePage onLogout={logout} onBack={() => setActiveTab('home')} />}
+        {activeTab === 'me' && <MePage onLogout={logout} onOpenReportHistory={() => setActiveTab('report-history')} onBack={() => setActiveTab('home')} onOpenDrafts={() => setActiveTab('drafts')} />}
         {activeTab === 'notifications' && <NotificationsPage />}
-        {activeTab === 'search' && <SearchPage />}
+        {activeTab === 'search' && <SearchPage initialQuery={searchQuery} onBack={() => setActiveTab(searchSource || 'home')} onOpenProfile={openProfile} onOpenHashtag={openHashtag} />}
+        {activeTab === 'saved' && <SavedPostsPage onBack={() => setActiveTab(savedReturnTab)} />}
+        {activeTab === 'drafts' && <DraftsPage userId={user?.id} onBack={() => setActiveTab('me')} onEdit={(draft) => { setDraftToEdit(draft); setShowCreateModal(true); setActiveTab('home'); }} />}
+        {activeTab === 'report-history' && <ReportHistoryPage onBack={() => setActiveTab('me')} />}
+        {activeTab === 'hashtag' && <HashtagPage name={hashtagName} onBack={() => setActiveTab(searchSource || 'home')} onOpenReel={openReel} />}
+        {activeTab === 'public-profile' && <PublicProfilePage userId={publicProfileId} onBack={() => setActiveTab(searchSource || 'home')} />}
       </main>
 
       {showCreateModal && (
-        <CreatePostModal onClose={() => setShowCreateModal(false)} onPostCreated={() => setFeedRefresh((prev) => prev + 1)} />
+        <CreatePostModal userId={user?.id} initialDraft={draftToEdit} onClose={() => { setShowCreateModal(false); setDraftToEdit(null); }} onDraftSaved={() => {}} onPostCreated={() => setFeedRefresh((prev) => prev + 1)} />
       )}
 
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} setShowCreateModal={setShowCreateModal} isFullScreenTab={isFullScreenTab} />
@@ -108,7 +159,7 @@ function AppContent() {
   );
 }
 
-function TopBar({ logout, onNotifications, onSearch, onProfile }) {
+function TopBar({ logout, onNotifications, unreadNotificationCount, onSearch, onProfile }) {
   return (
     <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
       <div className="flex items-center gap-3 px-4 py-3">
@@ -124,6 +175,11 @@ function TopBar({ logout, onNotifications, onSearch, onProfile }) {
         </button>
         <button onClick={onNotifications} aria-label="Notifications" className="relative p-2 hover:bg-gray-100 rounded-full shrink-0">
           <Bell className="w-6 h-6 text-gray-700" />
+          {unreadNotificationCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] leading-[18px] font-bold text-center ring-2 ring-white">
+              {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+            </span>
+          )}
         </button>
         <button onClick={onProfile} aria-label="My Profile" className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden shrink-0">
           <User className="w-5 h-5" />
@@ -174,7 +230,7 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTa
   );
 }
 
-function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
+function HomeFeed({ posts, setPosts, refreshKey, onOpenReel, onSearch }) {
   const fetchPosts = async () => {
     try {
       const response = await postAPI.getFeed();
@@ -197,8 +253,21 @@ function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
     }
   };
 
+  const [searchText, setSearchText] = useState('');
+  const submitSearch = (e) => {
+    e?.preventDefault();
+    const q = searchText.trim();
+    if (!q) return;
+    onSearch(q);
+  };
+
+
   return (
-    <div className="pt-20 px-4 space-y-4">
+    <div className="pt-20 px-4 pb-4 space-y-4">
+      <form onSubmit={submitSearch} className="max-w-2xl mx-auto relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search people, posts or hashtags" className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-full shadow-sm outline-none focus:ring-2 focus:ring-purple-300" />
+      </form>
       {posts.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-500">No posts yet. Be the first to post!</p>

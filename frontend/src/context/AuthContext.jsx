@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authAPI } from '../services/api';
+import { authAPI, sessionAPI } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -47,7 +47,9 @@ export function AuthProvider({ children }) {
 
   const login = async (identifier, password) => {
     const response = await authAPI.login({ identifier, password });
-    const { user, token } = response.data.data;
+    const data = response.data.data || {};
+    if (data.requiresTwoFactor) return data;
+    const { user, token } = data;
     localStorage.setItem('token', token);
     setUser(user);
     return user;
@@ -61,7 +63,8 @@ export function AuthProvider({ children }) {
     return user;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try { if (localStorage.getItem('token')) await sessionAPI.logout(); } catch (error) { console.warn('Session logout request failed', error); }
     localStorage.removeItem('token');
     setUser(null);
   };

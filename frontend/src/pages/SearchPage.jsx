@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Search, X, Clock3, Trash2, ArrowUpRight } from 'lucide-react';
-import api from '../services/api';
+import { Search, X, Clock3, Trash2, ArrowUpRight, ArrowLeft } from 'lucide-react';
+import api, { followAPI } from '../services/api';
 
 const HISTORY_KEY = 'ra_social_search_history';
 const MAX_HISTORY = 12;
@@ -12,13 +12,17 @@ function readHistory() {
   } catch { return []; }
 }
 
-function SearchPage() {
-  const [query, setQuery] = useState('');
-  const [history, setHistory] = useState([]);
+function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag }) {
+  const [query, setQuery] = useState(initialQuery || '');
+  const [history, setHistory] = useState(readHistory);
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [following, setFollowing] = useState({});
 
-  useEffect(() => setHistory(readHistory()), []);
+
+  useEffect(() => {
+    if (initialQuery?.trim()) handleSearch(initialQuery);
+  }, [initialQuery]);
 
   const saveHistory = (term) => {
     const value = term.trim();
@@ -61,6 +65,9 @@ function SearchPage() {
 
   return (
     <div className="pt-6 px-4 min-h-screen">
+      <div className="max-w-2xl mx-auto mb-4">
+        <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"><ArrowLeft className="w-4 h-4" /> Back</button>
+      </div>
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-2">
           <div className="flex-1 relative">
@@ -114,8 +121,9 @@ function SearchPage() {
               if (result.kind === 'user') {
                 const u = result.item;
                 return <div key={result.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
-                  <img src={u.avatarUrl || `https://i.pravatar.cc/150?u=${u.id}`} alt="" className="w-11 h-11 rounded-full object-cover" />
-                  <div className="min-w-0 flex-1"><h4 className="font-semibold truncate">{u.fullName || u.username}</h4><p className="text-sm text-gray-500">@{u.username}</p></div>
+                  <button onClick={() => onOpenProfile?.(u.id)}><img src={u.avatarUrl || `https://i.pravatar.cc/150?u=${u.id}`} alt="" className="w-11 h-11 rounded-full object-cover" /></button>
+                  <button onClick={() => onOpenProfile?.(u.id)} className="min-w-0 flex-1 text-left"><h4 className="font-semibold truncate">{u.fullName || u.username}</h4><p className="text-sm text-gray-500">@{u.username}</p></button>
+                  <button onClick={async () => { try { const r = await followAPI.follow(u.id); setFollowing(v => ({...v, [u.id]: Boolean(r.data?.data?.following)})); } catch(e) { console.error(e); } }} className="px-3 py-1.5 rounded-full bg-purple-600 text-white text-xs font-semibold">{following[u.id] ? 'Following' : 'Follow'}</button>
                 </div>;
               }
               if (result.kind === 'post') {
@@ -127,7 +135,7 @@ function SearchPage() {
                 </div>;
               }
               const tag = result.item;
-              return <div key={result.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 shadow-sm"><span className="font-medium text-gray-800">#{tag.name}</span><span className="text-sm text-gray-500">{tag.postsCount || 0} posts</span></div>;
+              return <button key={result.id} onClick={() => onOpenHashtag?.(tag.name)} className="w-full flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 shadow-sm text-left hover:border-purple-200 hover:bg-purple-50/40"><span className="font-medium text-gray-800">#{tag.name}</span><span className="text-sm text-gray-500">{tag.postsCount || 0} posts</span></button>;
             })}
           </div>
         )}

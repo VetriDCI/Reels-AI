@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Heart, MessageSquare, Share2, Send, X, Eye, Download, MoreHorizontal, Link2, Flag, Play, ExternalLink, Reply, ChevronDown } from 'lucide-react';
-import { postAPI, followAPI, reportAPI } from '../services/api';
+import { postAPI, followAPI, reportAPI, savedPostAPI } from '../services/api';
+import ShareToChatModal from './ShareToChatModal';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
 
@@ -12,11 +13,14 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
   const [comments, setComments] = useState([]);
   const [commentLoading, setCommentLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [shareChatOpen, setShareChatOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [following, setFollowing] = useState(Boolean(post._following || post.following));
   const [joinMenuOpen, setJoinMenuOpen] = useState(false);
   const [views, setViews] = useState(post.viewCount || 0);
+  const [saved, setSaved] = useState(Boolean(post._saved));
+  const [saveLoading, setSaveLoading] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => setViews(post.viewCount || 0), [post.viewCount]);
@@ -60,12 +64,19 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
     const ext = post.mediaType === 'video' ? 'mp4' : 'jpg';
     try { await downloadMedia(post.mediaUrl, `ra-social-${post.id}.${ext}`, postAPI.download(post.id)); } finally { setDownloading(false); }
   };
-  const saveToApp = () => {
-    try { const saved = JSON.parse(localStorage.getItem('ra_social_saved_posts') || '[]'); if (!saved.includes(post.id)) localStorage.setItem('ra_social_saved_posts', JSON.stringify([...saved, post.id])); alert('Saved to app'); } catch {}
-    setMenuOpen(false);
+  useEffect(() => { setSaved(Boolean(post._saved)); }, [post._saved]);
+  useEffect(() => { let active = true; savedPostAPI.status(post.id).then(r => active && setSaved(Boolean(r.data?.data?.saved))).catch(() => {}); return () => { active = false; }; }, [post.id]);
+  const saveToApp = async () => {
+    if (saveLoading) return;
+    setSaveLoading(true);
+    try {
+      if (saved) { await savedPostAPI.remove(post.id); setSaved(false); alert('Removed from Saved'); }
+      else { await savedPostAPI.save(post.id); setSaved(true); alert('Saved'); }
+    } catch (e) { alert(e.response?.data?.message || 'Unable to update saved post'); } finally { setSaveLoading(false); setMenuOpen(false); }
   };
 
   return (
+    <>
     <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -108,11 +119,12 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
         <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
         <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
         <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
+        <button onClick={() => setShareChatOpen(true)} className="action-btn hover:text-purple-600" title="Share to Chat"><Send className="w-5 h-5" /><span>Chat</span></button>
         {post.mediaUrl && <button onClick={handleDownload} disabled={downloading} className="action-btn hover:text-purple-600 disabled:opacity-50"><Download className="w-5 h-5" /><span>{downloading ? 'Saving…' : 'Download'}</span></button>}
         <div ref={menuRef} className="relative shrink-0 ml-auto">
           <button onClick={() => setMenuOpen(v => !v)} className="action-btn" aria-expanded={menuOpen} aria-label="More options"><MoreHorizontal className="w-5 h-5" /></button>
           {menuOpen && <div className="absolute right-0 bottom-10 z-[60] w-52 bg-white rounded-xl shadow-2xl border py-1">
-            {post.mediaUrl && <button onClick={saveToApp} className="menu-item"><Download className="w-4 h-4" />Save to app</button>}
+            {post.mediaUrl && <button onClick={saveToApp} className="menu-item"><Download className="w-4 h-4" />{saved ? 'Remove from Saved' : 'Save to Saved'}</button>}
             {post.mediaUrl && <button onClick={() => { window.open(post.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuOpen(false); }} className="menu-item"><ExternalLink className="w-4 h-4" />Open media</button>}
             <button onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/?post=${post.id}`); alert('Post link copied'); } catch {} setMenuOpen(false); }} className="menu-item"><Link2 className="w-4 h-4" />Copy link</button>
             {profileMode && user?.id === post.user?.id && <><button onClick={handleHide} className="menu-item"><Eye className="w-4 h-4" />Hide post</button><button onClick={handleDelete} className="menu-item text-red-600"><X className="w-4 h-4" />Delete post</button></>}
@@ -133,6 +145,8 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
         </div>
       </div>}
     </article>
+      <ShareToChatModal open={shareChatOpen} onClose={() => setShareChatOpen(false)} item={{ ...post, currentUserId: user?.id }} />
+    </>
   );
 }
 export default PostCard;

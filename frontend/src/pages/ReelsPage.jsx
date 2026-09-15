@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Share2, Download, MoreHorizontal, Eye, Bell, Search as SearchIcon, X, Send, Link2, Flag, ExternalLink } from 'lucide-react';
-import { postAPI, followAPI } from '../services/api';
+import { savedPostAPI, postAPI, followAPI } from '../services/api';
+import ShareToChatModal from '../components/ShareToChatModal';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
 
-export default function ReelsPage({ onNotifications, onSearch, initialPostId }) {
+export default function ReelsPage({ onNotifications, unreadNotificationCount, onSearch, initialPostId }) {
   const { user: currentUser } = useAuth();
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState(0);
   const [videoErrors, setVideoErrors] = useState({});
   const [sharedId, setSharedId] = useState(null);
+  const [shareChatReel, setShareChatReel] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [menuForId, setMenuForId] = useState(null);
   const [commentReel, setCommentReel] = useState(null);
@@ -157,6 +159,7 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
   if (reels.length === 0) return <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-2 px-6 text-center"><p className="text-lg font-bold">No reels yet</p><p className="text-sm text-gray-400">Post a video from Home to see it here.</p></div>;
 
   return (
+    <>
     <div ref={containerRef} onScroll={handleScroll} className="h-screen w-full bg-black overflow-y-scroll snap-y snap-mandatory">
       {reels.map((reel, i) => (
         <div key={reel.id} ref={el => { itemRefs.current[reel.id] = el; }} className="relative h-screen w-full snap-start flex items-center justify-center bg-black">
@@ -171,11 +174,22 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
           />
           {videoErrors[reel.id] && <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 rounded-xl bg-black/80 p-4 text-center text-sm text-red-300">This video could not be loaded.</div>}
 
-          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-4 text-white bg-gradient-to-b from-black/60 to-transparent pb-8 pointer-events-none">
-            <span className="font-bold text-lg">RA Social</span>
-            <div className="flex items-center gap-4 pointer-events-auto">
-              <button onClick={onSearch} aria-label="Search"><SearchIcon className="w-5 h-5" /></button>
-              <button onClick={onNotifications} aria-label="Notifications"><Bell className="w-5 h-5" /></button>
+          <div className="absolute top-0 left-0 right-0 flex items-center gap-3 px-4 pt-4 text-white bg-gradient-to-b from-black/70 to-transparent pb-8 pointer-events-none">
+            <span className="font-bold text-lg shrink-0">RA Social</span>
+            <button onClick={() => onSearch('')} aria-label="Search" className="pointer-events-auto flex-1 max-w-md mx-auto flex items-center gap-2 rounded-full bg-white/15 border border-white/25 backdrop-blur px-3 py-2 text-left text-sm text-white/90">
+              <SearchIcon className="w-5 h-5 shrink-0" />
+              <span className="truncate">Search people, posts or hashtags</span>
+            </button>
+            <div className="flex items-center gap-4 pointer-events-auto shrink-0">
+              <button onClick={() => onSearch('')} aria-label="Search" className="md:hidden"><SearchIcon className="w-5 h-5" /></button>
+              <button onClick={onNotifications} aria-label="Notifications" className="relative">
+                <Bell className="w-5 h-5" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] px-0.5 rounded-full bg-red-500 text-white text-[9px] leading-[16px] font-bold text-center ring-2 ring-black/20">
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
@@ -189,15 +203,10 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
               <button onClick={() => setMenuForId(menuForId === reel.id ? null : reel.id)} aria-label="More options"><MoreHorizontal className="w-6 h-6" /></button>
               {menuForId === reel.id && (
                 <div className="absolute right-8 bottom-0 z-[60] w-48 bg-white rounded-xl shadow-2xl py-1 text-gray-800">
-                  <button onClick={() => {
-                    try {
-                      const saved = JSON.parse(localStorage.getItem('ra_social_saved_posts') || '[]');
-                      const next = saved.includes(reel.id) ? saved : [...saved, reel.id];
-                      localStorage.setItem('ra_social_saved_posts', JSON.stringify(next));
-                      alert('Saved to app');
-                    } catch {}
+                  <button onClick={async () => {
+                    try { await savedPostAPI.save(reel.id); alert('Saved'); } catch (e) { alert(e.response?.data?.message || 'Unable to save reel'); }
                     setMenuForId(null);
-                  }} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Download className="w-4 h-4" />Save to app</button>
+                  }} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Download className="w-4 h-4" />Save to Saved</button>
                   <button onClick={() => copyLink(reel)} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Link2 className="w-4 h-4" />Copy link</button>
                   <button onClick={() => { window.open(reel.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuForId(null); }} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><ExternalLink className="w-4 h-4" />Open media</button>
                   <button onClick={() => setMenuForId(null)} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><Flag className="w-4 h-4" />Report</button>
@@ -231,5 +240,7 @@ export default function ReelsPage({ onNotifications, onSearch, initialPostId }) 
         </div>
       )}
     </div>
+    <ShareToChatModal open={!!shareChatReel} onClose={() => setShareChatReel(null)} item={shareChatReel ? { ...shareChatReel, currentUserId: currentUser?.id } : null} />
+    </>
   );
 }

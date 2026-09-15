@@ -13,11 +13,12 @@ export default function AnalyticsHubPage({ user, onBack, onOpenViews, onOpenFoll
     return items.map((item) => {
       const likes = item.likes?.length || 0;
       const comments = item.comments?.length || 0;
+      const views = Number(item.viewCount || 0);
       return (
         <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm mb-3">
           <p className="font-semibold text-gray-800 mb-2 line-clamp-1">{item.content || 'Untitled post'}</p>
           <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
-            <span className="flex items-center gap-1"><Eye className="w-4 h-4" />{likes * 8 + comments * 3} est. reach</span>
+            <span className="flex items-center gap-1"><Eye className="w-4 h-4" />{views} views</span>
             <span>❤️ {likes}</span>
             <span>💬 {comments}</span>
           </div>
@@ -38,10 +39,6 @@ export default function AnalyticsHubPage({ user, onBack, onOpenViews, onOpenFoll
       </div>
 
       <div className="p-4">
-        <div className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 mb-4">
-          ⚠️ Real view-tracking isn't wired up on the backend yet — "reach" below is estimated from likes/comments, not tracked impressions.
-        </div>
-
         <div className="flex bg-white rounded-full p-1 mb-4 shadow-sm">
           <button
             onClick={() => setTab('reels')}

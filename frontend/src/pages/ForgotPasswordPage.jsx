@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         <h1 className="text-2xl font-bold mb-1">Forgot password?</h1>
-        <p className="text-gray-500 text-sm mb-6">Enter your Email or Username to receive an OTP</p>
+        <p className="text-gray-500 text-sm mb-6">Enter your Email, Username or mobile number to receive an OTP</p>
 
         {error && <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>}
 
@@ -48,7 +48,7 @@ export default function ForgotPasswordPage() {
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="Email / Username"
+              placeholder="Email / Username / Mobile"
               required
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400"
             />
@@ -63,7 +63,7 @@ export default function ForgotPasswordPage() {
           </button>
         </form>
 
-        <div className="mt-4 bg-blue-50 text-blue-700 text-sm px-4 py-3 rounded-xl text-center">A one-time code will be sent to the account email when password-reset email delivery is configured.</div>
+        <div className="mt-4 bg-blue-50 text-blue-700 text-sm px-4 py-3 rounded-xl text-center">A one-time code will be delivered by the configured email or SMS provider.</div>
       </div>
     </div>
   );

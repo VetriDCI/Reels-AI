@@ -18,7 +18,8 @@ function LoginPage() {
     setError('');
 
     try {
-      await login(identifier, password);
+      const result = await login(identifier, password);
+      if (result?.requiresTwoFactor) { navigate('/2fa-login', { state: { challengeToken: result.challengeToken } }); return; }
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');

@@ -24,6 +24,11 @@ api.interceptors.request.use((config) => {
 });
 
 export const authAPI = {
+  verifyTwoFactorLogin: (challengeToken, code) => api.post('/auth/2fa/verify-login', { challengeToken, code }),
+  twoFactorStatus: () => api.get('/auth/2fa/status'),
+  twoFactorSetup: () => api.post('/auth/2fa/setup'),
+  twoFactorEnable: (code) => api.post('/auth/2fa/enable', { code }),
+  twoFactorDisable: (password, code) => api.post('/auth/2fa/disable', { password, code }),
   checkUsername: (username) => api.get(`/auth/check-username?username=${encodeURIComponent(username)}`),
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
@@ -32,6 +37,11 @@ export const authAPI = {
   createChannel: (channelName) => api.post('/auth/channel', { channelName })
 };
 
+
+export const accountAPI = {
+  exportData: () => api.get('/account/export'),
+  delete: (password) => api.delete('/account', { data: { password } })
+};
 export const uploadAPI = {
   media: (file) => {
     const formData = new FormData();
@@ -52,16 +62,31 @@ export const postAPI = {
   like: (id) => api.post(`/posts/${id}/like`),
   addComment: (id, content) => api.post(`/posts/${id}/comments`, { content }),
   view: (id) => api.post(`/posts/${id}/view`),
-  download: (id) => `${API_URL}/posts/${id}/download`
+  download: (id) => `${API_URL}/posts/${id}/download`,
+  getHashtag: (name) => api.get(`/search/hashtag/${encodeURIComponent(name)}`)
+};
+
+export const savedPostAPI = {
+  list: () => api.get('/saved-posts'),
+  status: (postId) => api.get(`/saved-posts/${postId}/status`),
+  save: (postId) => api.post(`/saved-posts/${postId}`),
+  remove: (postId) => api.delete(`/saved-posts/${postId}`)
 };
 
 export const reportAPI = {
   create: (postId, reason) => api.post(`/posts/${postId}/report`, { reason }),
+  mine: () => api.get('/reports/mine'),
 };
 
 export const monetizationAPI = {
   status: () => api.get('/monetization/status'),
-  apply: () => api.post('/monetization/apply')
+  apply: () => api.post('/monetization/apply'),
+  analytics: (days = 30) => api.get(`/monetization/analytics?days=${days}`)
+};
+
+export const payoutAPI = {
+  list: () => api.get('/payouts'),
+  request: (data) => api.post('/payouts', data)
 };
 
 export const searchAPI = {
@@ -70,7 +95,15 @@ export const searchAPI = {
 
 export const notificationAPI = {
   getNotifications: () => api.get('/notifications'),
-  markAsRead: () => api.put('/notifications/read')
+  markAsRead: () => api.put('/notifications/read'),
+  deleteOne: (id) => api.delete(`/notifications/${id}`),
+  deleteAll: () => api.delete('/notifications')
+};
+
+export const vibeAPI = {
+  getAll: () => api.get('/vibes'),
+  create: (data) => api.post('/vibes', data),
+  delete: (id) => api.delete(`/vibes/${id}`)
 };
 
 export const chatAPI = {
@@ -86,3 +119,16 @@ export const followAPI = {
 };
 
 export default api;
+export const userSafetyAPI = {
+  status: (userId) => api.get(`/user-safety/${userId}`),
+  toggle: (userId, action) => api.post(`/user-safety/${userId}/toggle`, { action })
+};
+
+export const userAPI = { getPublic: (id) => api.get(`/users/${id}`) };
+
+export const sessionAPI = {
+  list: () => api.get('/sessions'),
+  logout: () => api.post('/sessions/logout'),
+  logoutAll: () => api.post('/sessions/logout-all'),
+  revoke: (id) => api.delete(`/sessions/${id}`)
+};

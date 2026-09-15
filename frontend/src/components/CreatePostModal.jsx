@@ -2,8 +2,10 @@ import React, { useRef, useState, useEffect } from 'react';
 import { X, Image, Video, Radio, RotateCcw, Pencil, Check, RefreshCw, Play, Pause } from 'lucide-react';
 import { postAPI, uploadAPI } from '../services/api';
 
-function CreatePostModal({ onClose, onPostCreated }) {
-  const [content, setContent] = useState('');
+function CreatePostModal({ onClose, onPostCreated, userId, initialDraft, onDraftSaved }) {
+  const [content, setContent] = useState(initialDraft?.content || '');
+  const [savedDraftId, setSavedDraftId] = useState(initialDraft?.id || null);
+  const [draftSaving, setDraftSaving] = useState(false);
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [mediaKind, setMediaKind] = useState(null);
@@ -103,12 +105,30 @@ function CreatePostModal({ onClose, onPostCreated }) {
     img.src = previewUrl;
   };
 
+  const saveDraft = async () => {
+    if (!content.trim() && !file && !initialDraft?.mediaUrl) return;
+    setDraftSaving(true);
+    try {
+      let mediaUrl = initialDraft?.mediaUrl || null;
+      let mediaType = initialDraft?.mediaType || 'text';
+      if (file) { const upload = await uploadAPI.media(file); mediaUrl = upload.data.data.url; mediaType = upload.data.data.mediaType; }
+      const key = `ra-social-drafts-${userId || 'guest'}`;
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const id = savedDraftId || crypto.randomUUID();
+      const draft = { id, content: content.trim(), mediaUrl, mediaType, createdAt: initialDraft?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const next = [draft, ...existing.filter(d => d.id !== id)].slice(0, 50);
+      localStorage.setItem(key, JSON.stringify(next)); setSavedDraftId(id); onDraftSaved?.();
+      alert('Draft saved');
+    } catch (error) { alert(error.response?.data?.message || 'Failed to save draft'); }
+    finally { setDraftSaving(false); }
+  };
+
   const handleSubmit = async () => {
     if (!content.trim() && !file) return;
     setUploadStage('uploading');
     try {
-      let mediaUrl = null;
-      let mediaType = 'text';
+      let mediaUrl = initialDraft?.mediaUrl || null;
+      let mediaType = initialDraft?.mediaType || 'text';
       if (file) {
         const upload = await uploadAPI.media(file);
         mediaUrl = upload.data.data.url;
@@ -116,6 +136,7 @@ function CreatePostModal({ onClose, onPostCreated }) {
       }
       setUploadStage('publishing');
       await postAPI.create({ content: content.trim(), mediaUrl, mediaType });
+      if (savedDraftId) { const key = `ra-social-drafts-${userId || 'guest'}`; const drafts = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify(drafts.filter(d => d.id !== savedDraftId))); }
       onPostCreated?.();
       stopCamera();
       onClose();
@@ -132,7 +153,7 @@ function CreatePostModal({ onClose, onPostCreated }) {
         <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
           <button onClick={() => { stopCamera(); onClose(); }} aria-label="Close" disabled={loading}><X className="w-6 h-6 text-gray-600" /></button>
           <h2 className="font-semibold">Create Post</h2>
-          <button onClick={handleSubmit} disabled={loading || (!content.trim() && !file)} className="text-purple-600 font-semibold disabled:opacity-50">Post</button>
+          <div className="flex items-center gap-3"><button onClick={saveDraft} disabled={loading || draftSaving || (!content.trim() && !file && !initialDraft?.mediaUrl)} className="text-gray-600 text-sm font-semibold disabled:opacity-50">{draftSaving ? 'Saving…' : 'Save draft'}</button><button onClick={handleSubmit} disabled={loading || draftSaving || (!content.trim() && !file && !initialDraft?.mediaUrl)} className="text-purple-600 font-semibold disabled:opacity-50">Post</button></div>
         </div>
 
         {loading && (
