@@ -38,6 +38,7 @@ model User {
   sentNotifications Notification[] @relation("sentNotifications")
   chats         Chat[]
   messages      Message[]
+  hiddenMessages MessageHidden[]
   aiConversations AIConversation[]
   aiMemories     AIMemory[]
   reportsFiled   Report[] @relation("reporter")
@@ -57,6 +58,9 @@ model User {
   twoFactorEnabled Boolean @default(false)
   twoFactorSecretEnc String?
   twoFactorBackupCodes Json @default("[]")
+  vibeReactions   VibeReaction[]
+  vibeReplies     VibeReply[]
+  vibeViews       VibeView[]
 
   @@index([username])
   @@index([email])
@@ -242,9 +246,31 @@ model Message {
   mediaUrl  String?
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
+  hiddenFor MessageHidden[]
+  replyToId String?
+  replyTo Message? @relation("messageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies Message[] @relation("messageReplies")
+  forwardedFromId String?
+  forwardedFrom Message? @relation("messageForwards", fields: [forwardedFromId], references: [id], onDelete: SetNull)
+  forwards Message[] @relation("messageForwards")
+  pinned Boolean @default(false)
 
   @@index([chatId])
   @@index([senderId])
+  @@index([replyToId])
+  @@index([forwardedFromId])
+}
+
+model MessageHidden {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId])
+  @@index([userId])
 }
 
 model PostView {
@@ -347,10 +373,48 @@ model Vibe {
   moderationReason String?
   moderatedAt   DateTime?
   createdAt     DateTime @default(now())
+  views         VibeView[]
+  reactions     VibeReaction[]
+  replies       VibeReply[]
 
   @@index([userId])
   @@index([expiresAt])
   @@index([status])
+}
+
+model VibeView {
+  id        String   @id @default(uuid())
+  vibeId    String
+  vibe      Vibe     @relation(fields: [vibeId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([vibeId, userId])
+  @@index([userId])
+}
+
+model VibeReaction {
+  id        String   @id @default(uuid())
+  vibeId    String
+  vibe      Vibe     @relation(fields: [vibeId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime @default(now())
+  @@unique([vibeId, userId])
+  @@index([vibeId])
+}
+
+model VibeReply {
+  id        String   @id @default(uuid())
+  vibeId    String
+  vibe      Vibe     @relation(fields: [vibeId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+  @@index([vibeId, createdAt])
+  @@index([userId])
 }
 
 model PasswordResetChallenge {

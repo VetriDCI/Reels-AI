@@ -31,6 +31,7 @@ dotenv.config();
 const app = express();
 app.set('trust proxy', 1);
 const httpServer = createServer(app);
+const onlineUsers = new Map();
 const io = new Server(httpServer, {
   cors: {
     origin: (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map(v => v.trim()).filter(Boolean),
@@ -100,21 +101,33 @@ io.use(async (socket, next) => {
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
+  const wasOnline = onlineUsers.has(socket.userId);
+  onlineUsers.set(socket.userId, (onlineUsers.get(socket.userId) || 0) + 1);
+  if (!wasOnline) io.emit('user_presence', { userId: socket.userId, online: true });
+  socket.emit('presence_snapshot', { userIds: Array.from(onlineUsers.keys()) });
 
   socket.on('join_chat', async (chatId) => {
     try {
       if (!chatId) return;
-      const chat = await prisma.chat.findUnique({
-        where: { id: chatId },
-        select: { participants: { where: { id: socket.userId }, select: { id: true } } }
-      });
+      const chat = await prisma.chat.findUnique({ where: { id: chatId }, select: { participants: { where: { id: socket.userId }, select: { id: true } } } });
       if (chat?.participants?.length) socket.join(`chat:${chatId}`);
-    } catch (error) {
-      console.error('Socket chat join error:', error.message);
-    }
+    } catch (error) { console.error('Socket chat join error:', error.message); }
   });
 
-  socket.on('disconnect', () => { console.log('User disconnected:', socket.id); });
+  socket.on('typing', async ({ chatId, isTyping }) => {
+    try {
+      if (!chatId) return;
+      const chat = await prisma.chat.findFirst({ where: { id: chatId, participants: { some: { id: socket.userId } } }, select: { id: true } });
+      if (chat) socket.to(`chat:${chatId}`).emit('typing', { chatId, userId: socket.userId, isTyping: Boolean(isTyping) });
+    } catch (error) { console.error('Socket typing error:', error.message); }
+  });
+
+  socket.on('disconnect', () => {
+    const count = (onlineUsers.get(socket.userId) || 1) - 1;
+    if (count <= 0) { onlineUsers.delete(socket.userId); io.emit('user_presence', { userId: socket.userId, online: false }); }
+    else onlineUsers.set(socket.userId, count);
+    console.log('User disconnected:', socket.id);
+  });
 });
 
 app.use((err, req, res, next) => {
