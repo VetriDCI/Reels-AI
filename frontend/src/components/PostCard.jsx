@@ -76,7 +76,6 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
   };
 
   return (
-    <>
     <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -146,7 +145,6 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
       </div>}
     </article>
       <ShareToChatModal open={shareChatOpen} onClose={() => setShareChatOpen(false)} item={{ ...post, currentUserId: user?.id }} />
-    </>
   );
 }
 export default PostCard;

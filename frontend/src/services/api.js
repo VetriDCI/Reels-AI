@@ -110,7 +110,11 @@ export const chatAPI = {
   getChats: () => api.get('/chats'),
   getMessages: (chatId) => api.get(`/chats/${chatId}/messages`),
   createChat: (participantId) => api.post('/chats', { participantId }),
-  sendMessage: (chatId, content, mediaUrl = null) => api.post(`/chats/${chatId}/messages`, { content, mediaUrl })
+  sendMessage: (chatId, content, mediaUrl = null, replyToId = null, forwardedFromId = null) => api.post(`/chats/${chatId}/messages`, { content, mediaUrl, replyToId, forwardedFromId }),
+  deleteForMe: (chatId, messageId) => api.delete(`/chats/${chatId}/messages/${messageId}/me`),
+  deleteForEveryone: (chatId, messageId) => api.delete(`/chats/${chatId}/messages/${messageId}/everyone`),
+  pin: (chatId, messageId) => api.patch(`/chats/${chatId}/messages/${messageId}/pin`),
+  forward: (chatId, messageId, targetChatId) => api.post(`/chats/${chatId}/messages/${messageId}/forward`, { targetChatId })
 };
 
 export const followAPI = {

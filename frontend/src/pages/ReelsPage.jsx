@@ -159,7 +159,6 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   if (reels.length === 0) return <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-2 px-6 text-center"><p className="text-lg font-bold">No reels yet</p><p className="text-sm text-gray-400">Post a video from Home to see it here.</p></div>;
 
   return (
-    <>
     <div ref={containerRef} onScroll={handleScroll} className="h-screen w-full bg-black overflow-y-scroll snap-y snap-mandatory">
       {reels.map((reel, i) => (
         <div key={reel.id} ref={el => { itemRefs.current[reel.id] = el; }} className="relative h-screen w-full snap-start flex items-center justify-center bg-black">
@@ -241,6 +240,5 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
       )}
     </div>
     <ShareToChatModal open={!!shareChatReel} onClose={() => setShareChatReel(null)} item={shareChatReel ? { ...shareChatReel, currentUserId: currentUser?.id } : null} />
-    </>
   );
 }
