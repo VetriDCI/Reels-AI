@@ -2,7 +2,42 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import prisma from '../config/database.js';
+import { createSessionForUser } from './sessionController.js';
+import { sendPasswordResetCode } from '../services/messageService.js';
 
+
+const base32Encode = (bytes) => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0, value = 0, out = '';
+  for (const byte of bytes) { value = (value << 8) | byte; bits += 8; while (bits >= 5) { out += alphabet[(value >>> (bits - 5)) & 31]; bits -= 5; } }
+  if (bits > 0) out += alphabet[(value << (5 - bits)) & 31];
+  return out;
+};
+const base32Decode = (input) => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; let bits = 0, value = 0; const out=[];
+  for (const c of String(input).toUpperCase().replace(/=+$/,'')) { const n=alphabet.indexOf(c); if(n<0) throw new Error('Invalid secret'); value=(value<<5)|n; bits+=5; if(bits>=8){ out.push((value >>> (bits-8)) & 255); bits-=8; } }
+  return Buffer.from(out);
+};
+const encrypt2FASecret = (secret) => {
+  const key = crypto.createHash('sha256').update(String(process.env.JWT_SECRET || 'ra-social-2fa')).digest();
+  const iv = crypto.randomBytes(12); const cipher = crypto.createCipheriv('aes-256-gcm', key, iv); const enc=Buffer.concat([cipher.update(secret,'utf8'),cipher.final()]);
+  return `${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${enc.toString('base64url')}`;
+};
+const decrypt2FASecret = (packed) => {
+  const [ivS, tagS, dataS] = String(packed || '').split('.'); if(!ivS||!tagS||!dataS) throw new Error('Invalid encrypted secret');
+  const key=crypto.createHash('sha256').update(String(process.env.JWT_SECRET || 'ra-social-2fa')).digest(); const decipher=crypto.createDecipheriv('aes-256-gcm',key,Buffer.from(ivS,'base64url')); decipher.setAuthTag(Buffer.from(tagS,'base64url'));
+  return Buffer.concat([decipher.update(Buffer.from(dataS,'base64url')),decipher.final()]).toString('utf8');
+};
+const totpCode = (secret, counter) => {
+  const key=base32Decode(secret); const buf=Buffer.alloc(8); buf.writeBigUInt64BE(BigInt(counter)); const digest=crypto.createHmac('sha1',key).update(buf).digest(); const offset=digest[digest.length-1]&15; const num=((digest.readUInt32BE(offset)&0x7fffffff)%1000000); return String(num).padStart(6,'0');
+};
+const verifyTotp = (secret, code) => { const now=Math.floor(Date.now()/1000/30); const clean=String(code||'').replace(/\s/g,''); if(!/^\d{6}$/.test(clean)) return false; for(let d=-1;d<=1;d++) if(totpCode(secret,now+d)===clean) return true; return false; };
+const makeBackupCodes = () => Array.from({length:8},()=>crypto.randomBytes(5).toString('hex').toUpperCase());
+const hashBackupCode = (code) => bcrypt.hash(String(code).replace(/[^A-Za-z0-9]/g,'').toUpperCase(),10);
+const consumeBackupCode = async (user, code) => {
+  const normalized=String(code||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase(); if(!normalized) return false; const hashes=Array.isArray(user.twoFactorBackupCodes)?user.twoFactorBackupCodes:[];
+  for(let i=0;i<hashes.length;i++){ if(await bcrypt.compare(normalized, hashes[i])) { hashes.splice(i,1); await prisma.user.update({where:{id:user.id},data:{twoFactorBackupCodes:hashes}}); return true; } } return false;
+};
 
 export const checkUsername = async (req, res) => {
   try {
@@ -62,7 +97,8 @@ export const register = async (req, res) => {
       select: { id: true, username: true, email: true, phoneNumber: true, fullName: true, avatarUrl: true, createdAt: true }
     });
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '365d' });
+    const { tokenId } = await createSessionForUser(user.id, req);
+    const token = jwt.sign({ userId: user.id, jti: tokenId }, process.env.JWT_SECRET, { expiresIn: '365d' });
 
     res.status(201).json({ success: true, message: 'User registered successfully', data: { user, token } });
   } catch (error) {
@@ -104,21 +140,42 @@ export const login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '365d' });
-
-    res.json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        user: { id: user.id, username: user.username, email: user.email, phoneNumber: user.phoneNumber, fullName: user.fullName, avatarUrl: user.avatarUrl, bio: user.bio },
-        token
-      }
-    });
+    if (user.twoFactorEnabled) {
+      const challengeToken = jwt.sign({ userId: user.id, purpose: '2fa-login' }, process.env.JWT_SECRET, { expiresIn: '10m' });
+      return res.json({ success: true, message: 'Two-factor authentication required', data: { requiresTwoFactor: true, challengeToken } });
+    }
+    const { tokenId } = await createSessionForUser(user.id, req);
+    const token = jwt.sign({ userId: user.id, jti: tokenId }, process.env.JWT_SECRET, { expiresIn: '365d' });
+    res.json({ success: true, message: 'Login successful', data: { user: { id: user.id, username: user.username, email: user.email, phoneNumber: user.phoneNumber, fullName: user.fullName, avatarUrl: user.avatarUrl, bio: user.bio }, token } });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ success: false, message: 'Login failed' });
   }
 };
+
+export const verifyTwoFactorLogin = async (req, res) => {
+  try {
+    const { challengeToken, code } = req.body || {}; if(!challengeToken||!code) return res.status(400).json({success:false,message:'Verification code is required'});
+    const decoded=jwt.verify(challengeToken,process.env.JWT_SECRET); if(decoded.purpose!=='2fa-login') throw new Error('Invalid challenge');
+    const user=await prisma.user.findUnique({where:{id:decoded.userId}}); if(!user||!user.twoFactorEnabled||!user.twoFactorSecretEnc) return res.status(401).json({success:false,message:'Two-factor authentication is not enabled'});
+    let valid=false; try { valid=verifyTotp(decrypt2FASecret(user.twoFactorSecretEnc),code); } catch {}
+    if(!valid) valid=await consumeBackupCode(user,code);
+    if(!valid) return res.status(401).json({success:false,message:'Invalid authentication code'});
+    const {tokenId}=await createSessionForUser(user.id,req); const token=jwt.sign({userId:user.id,jti:tokenId},process.env.JWT_SECRET,{expiresIn:'365d'});
+    res.json({success:true,message:'Login successful',data:{user:{id:user.id,username:user.username,email:user.email,phoneNumber:user.phoneNumber,fullName:user.fullName,avatarUrl:user.avatarUrl,bio:user.bio},token}});
+  } catch(e){ return res.status(401).json({success:false,message:'Invalid or expired verification request'}); }
+};
+
+export const setupTwoFactor = async (req,res) => {
+  try { const user=await prisma.user.findUnique({where:{id:req.userId}}); if(!user) return res.status(404).json({success:false,message:'User not found'}); if(user.twoFactorEnabled) return res.status(400).json({success:false,message:'Two-factor authentication is already enabled'});
+    const secret=base32Encode(crypto.randomBytes(20)); const codes=makeBackupCodes(); await prisma.user.update({where:{id:user.id},data:{twoFactorSecretEnc:encrypt2FASecret(secret),twoFactorBackupCodes:await Promise.all(codes.map(hashBackupCode))}});
+    const issuer='RA Social'; const label=encodeURIComponent(`${issuer}:${user.email}`); const otpauth=`otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+    res.json({success:true,data:{secret,otpauthUri:otpauth,backupCodes:codes}});
+  } catch(e){console.error('2FA setup error',e);res.status(500).json({success:false,message:'Failed to start two-factor setup'});}
+};
+export const enableTwoFactor = async (req,res) => { try { const {code}=req.body||{}; const user=await prisma.user.findUnique({where:{id:req.userId}}); if(!user?.twoFactorSecretEnc) return res.status(400).json({success:false,message:'Start 2FA setup first'}); if(!verifyTotp(decrypt2FASecret(user.twoFactorSecretEnc),code)) return res.status(400).json({success:false,message:'Invalid authenticator code'}); await prisma.user.update({where:{id:user.id},data:{twoFactorEnabled:true}}); res.json({success:true,message:'Two-factor authentication enabled'}); } catch(e){res.status(500).json({success:false,message:'Failed to enable two-factor authentication'});} };
+export const disableTwoFactor = async (req,res) => { try { const {password,code}=req.body||{}; const user=await prisma.user.findUnique({where:{id:req.userId}}); if(!user) return res.status(404).json({success:false,message:'User not found'}); if(!(await bcrypt.compare(String(password||''),user.passwordHash))) return res.status(401).json({success:false,message:'Incorrect password'}); let valid=false; if(user.twoFactorSecretEnc) valid=verifyTotp(decrypt2FASecret(user.twoFactorSecretEnc),code); if(!valid) valid=await consumeBackupCode(user,code); if(!valid) return res.status(401).json({success:false,message:'Invalid authentication code'}); await prisma.user.update({where:{id:user.id},data:{twoFactorEnabled:false,twoFactorSecretEnc:null,twoFactorBackupCodes:[]}}); res.json({success:true,message:'Two-factor authentication disabled'}); } catch(e){res.status(500).json({success:false,message:'Failed to disable two-factor authentication'});} };
+export const getTwoFactorStatus = async (req,res) => { const user=await prisma.user.findUnique({where:{id:req.userId},select:{twoFactorEnabled:true,twoFactorBackupCodes:true}}); if(!user)return res.status(404).json({success:false,message:'User not found'}); res.json({success:true,data:{enabled:user.twoFactorEnabled,backupCodesRemaining:Array.isArray(user.twoFactorBackupCodes)?user.twoFactorBackupCodes.length:0}}); };
 
 export const getMe = async (req, res) => {
   try {
@@ -183,22 +240,7 @@ export const updateProfile = async (req, res) => {
 };
 
 // Password reset OTPs are random, short-lived and stored only as bcrypt hashes.
-// Production delivery uses Resend. Development can explicitly expose the random OTP.
-const sendPasswordResetEmail = async ({ to, otp }) => {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from) throw new Error('Password reset email service is not configured');
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from, to: [to], subject: 'RA Social password reset OTP',
-      html: `<p>Your RA Social password reset code is <strong>${otp}</strong>.</p><p>This code expires in 10 minutes.</p>`,
-    }),
-  });
-  if (!response.ok) throw new Error(`Resend email failed: ${response.status}`);
-};
-
+// Production delivery is handled by the configured email/SMS provider.
 export const forgotPassword = async (req, res) => {
   try {
     const identifier = String(req.body?.identifier || '').trim();
@@ -206,7 +248,7 @@ export const forgotPassword = async (req, res) => {
     const normalizedPhone = identifier.replace(/\D/g, '');
     const user = await prisma.user.findFirst({
       where: { OR: [{ email: identifier.toLowerCase() }, { username: identifier }, ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])] },
-      select: { id: true, email: true },
+      select: { id: true, email: true, phoneNumber: true },
     });
     if (!user) return res.json({ success: true, message: 'If an account matches, reset instructions will be sent.' });
 
@@ -217,12 +259,13 @@ export const forgotPassword = async (req, res) => {
       select: { id: true },
     });
     const devMode = process.env.NODE_ENV !== 'production' && process.env.PASSWORD_RESET_DEV_MODE === 'true';
-    if (!devMode) await sendPasswordResetEmail({ to: user.email, otp });
+    let delivery = null;
+    if (!devMode) delivery = await sendPasswordResetCode({ user, otp });
 
-    res.json({ success: true, message: devMode ? 'OTP generated in development mode.' : 'If an account matches, reset instructions will be sent.', data: { challengeId: challenge.id, ...(devMode ? { devOtp: otp } : {}) } });
+    res.json({ success: true, message: devMode ? 'OTP generated in development mode.' : 'If an account matches, reset instructions will be sent.', data: { challengeId: challenge.id, ...(devMode ? { devOtp: otp } : {}), ...(delivery ? { delivery } : {}) } });
   } catch (error) {
     console.error('Forgot password error:', error);
-    if (error.message?.includes('not configured') || error.message?.includes('Resend email failed')) return res.status(503).json({ success: false, message: 'Password reset email service is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.' });
+    if (error.message?.includes('not configured') || error.message?.includes('Resend email failed') || error.message?.includes('Twilio SMS failed')) return res.status(503).json({ success: false, message: 'Password reset delivery service is not configured correctly.' });
     res.status(500).json({ success: false, message: 'Failed to process request' });
   }
 };
@@ -232,9 +275,13 @@ export const verifyOtp = async (req, res) => {
     const { identifier, otp, challengeId } = req.body;
     if (!identifier || !otp || !challengeId) return res.status(400).json({ success: false, message: 'Identifier, OTP and challenge are required' });
     const challenge = await prisma.passwordResetChallenge.findUnique({ where: { id: challengeId } });
-    if (!challenge || challenge.usedAt || challenge.verifiedAt || challenge.expiresAt < new Date()) return res.status(401).json({ success: false, message: 'OTP expired or already used' });
+    if (!challenge || challenge.usedAt || challenge.verifiedAt || challenge.expiresAt < new Date() || challenge.attempts >= 5) return res.status(401).json({ success: false, message: 'OTP expired, locked or already used' });
     const valid = await bcrypt.compare(String(otp), challenge.otpHash);
-    if (!valid) return res.status(400).json({ success: false, message: 'Invalid OTP' });
+    if (!valid) {
+      const nextAttempts = challenge.attempts + 1;
+      await prisma.passwordResetChallenge.update({ where: { id: challenge.id }, data: { attempts: nextAttempts, ...(nextAttempts >= 5 ? { usedAt: new Date() } : {}) } });
+      return res.status(400).json({ success: false, message: nextAttempts >= 5 ? 'Too many invalid OTP attempts. Please request a new code.' : 'Invalid OTP' });
+    }
     const normalizedPhone = String(identifier).replace(/\D/g, '');
     const user = await prisma.user.findFirst({ where: { id: challenge.userId, OR: [{ email: String(identifier).toLowerCase() }, { username: identifier }, ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : [])] }, select: { id:true } });
     if (!user) return res.status(400).json({ success: false, message: 'Invalid reset request' });
@@ -276,6 +323,7 @@ export const resetPassword = async (req, res) => {
     await prisma.$transaction([
       prisma.user.update({ where: { id: decoded.userId }, data: { passwordHash } }),
       prisma.passwordResetChallenge.update({ where: { id: decoded.challengeId }, data: { usedAt: new Date() } }),
+      prisma.session.updateMany({ where: { userId: decoded.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
     ]);
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
@@ -307,9 +355,12 @@ export const changePassword = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword, salt);
 
-    await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+      prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
 
-    res.json({ success: true, message: 'Password changed successfully' });
+    res.json({ success: true, message: 'Password changed successfully. Please log in again on your devices.' });
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ success: false, message: 'Failed to change password' });

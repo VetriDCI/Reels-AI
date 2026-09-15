@@ -9,9 +9,19 @@ import aiRoutes from './routes/aiRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
+import vibeRoutes from './routes/vibeRoutes.js';
+import { cleanupExpiredVibes } from './controllers/vibeController.js';
 import followRoutes from './routes/followRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import monetizationRoutes from './routes/monetizationRoutes.js';
+import payoutRoutes from './routes/payoutRoutes.js';
+import userSafetyRoutes from './routes/userSafetyRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import savedPostRoutes from './routes/savedPostRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
+import adRoutes from './routes/adRoutes.js';
+import accountRoutes from './routes/accountRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.js';
 import prisma from './config/database.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -19,6 +29,7 @@ import jwt from 'jsonwebtoken';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -40,8 +51,8 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
@@ -49,9 +60,18 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chats', chatRoutes);
+app.use('/api/vibes', vibeRoutes);
 app.use('/api/follow', followRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/monetization', monetizationRoutes);
+app.use('/api/payouts', payoutRoutes);
+app.use('/api/user-safety', userSafetyRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/saved-posts', savedPostRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/ads', adRoutes);
+app.use('/api/account', accountRoutes);
+app.use('/api/sessions', sessionRoutes);
 app.set('io', io);
 
 app.get('/api/health', (req, res) => {
@@ -62,11 +82,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error('Authentication required'));
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.jti) {
+      const session = await prisma.session.findFirst({ where: { tokenId: decoded.jti, userId: decoded.userId, revokedAt: null, expiresAt: { gt: new Date() } }, select: { id: true } });
+      if (!session) return next(new Error('Session expired or logged out'));
+    }
     socket.userId = decoded.userId;
     next();
   } catch {
@@ -99,6 +123,10 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+
+// Keep expired 24-hour Vibes cleaned up even when nobody opens the Chat page.
+setInterval(() => cleanupExpiredVibes().catch((error) => console.error('Vibe cleanup error:', error)), 10 * 60 * 1000);
+cleanupExpiredVibes().catch((error) => console.error('Initial Vibe cleanup error:', error));
 
 app.get('/', (req, res) => res.json({ success: true, message: 'RA Social API is running' }));
 

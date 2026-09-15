@@ -37,7 +37,9 @@ router.post('/upload', protect, upload.single('file'), (req, res) => {
     success: true,
     data: {
       url: req.file.path || req.file.secure_url,
-      mediaType: req.file.mimetype?.startsWith('video/') ? 'video' : 'image'
+      mediaType: req.file.mimetype?.startsWith('video/') ? 'video' : 'image',
+      publicId: req.file.filename || req.file.public_id || null,
+      resourceType: req.file.resource_type || (req.file.mimetype?.startsWith('video/') ? 'video' : 'image')
     }
   });
 });

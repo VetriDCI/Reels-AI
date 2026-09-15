@@ -1,3 +1,13 @@
+const getSafetyPair = async (userId, otherId) => {
+  const [blockedByMe, blockedMe, mutedByMe, restrictedByMe] = await Promise.all([
+    prisma.userBlock.findUnique({ where:{ blockerId_blockedId:{ blockerId:userId, blockedId:otherId } } }),
+    prisma.userBlock.findUnique({ where:{ blockerId_blockedId:{ blockerId:otherId, blockedId:userId } } }),
+    prisma.userMute.findUnique({ where:{ muterId_mutedId:{ muterId:userId, mutedId:otherId } } }),
+    prisma.userRestrict.findUnique({ where:{ restrictorId_restrictedId:{ restrictorId:otherId, restrictedId:userId } } })
+  ]);
+  return {blockedByMe:!!blockedByMe, blockedMe:!!blockedMe, mutedByMe:!!mutedByMe, restrictedByOther:!!restrictedByMe};
+};
+
 import prisma from '../config/database.js';
 
 export const getChats = async (req, res) => {
@@ -98,6 +108,9 @@ export const createChat = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User is not available for chat' });
     }
 
+    const safety = await getSafetyPair(userId, participantId);
+    if (safety.blockedByMe || safety.blockedMe) return res.status(403).json({ success:false, message:'You cannot start a chat with this user' });
+
     const existingChat = await prisma.chat.findFirst({
       where: {
         AND: [
@@ -135,14 +148,18 @@ export const sendMessage = async (req, res) => {
     }
 
     const chat = await prisma.chat.findFirst({
-      where: {
-        id: chatId,
-        participants: { some: { id: userId } }
-      }
+      where: { id: chatId, participants: { some: { id: userId } } },
+      include: { participants: { select: { id: true } } }
     });
 
     if (!chat) {
       return res.status(404).json({ success: false, message: 'Chat not found' });
+    }
+
+    const otherParticipant = chat.participants.find((p) => p.id !== userId);
+    if (otherParticipant) {
+      const safety = await getSafetyPair(userId, otherParticipant.id);
+      if (safety.blockedByMe || safety.blockedMe) return res.status(403).json({ success:false, message:'Messaging is unavailable for this user' });
     }
 
     const message = await prisma.message.create({

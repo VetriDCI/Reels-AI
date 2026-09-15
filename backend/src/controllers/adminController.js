@@ -1,6 +1,9 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import prisma from '../config/database.js';
+import { createSessionForUser } from './sessionController.js';
+import { sendPasswordResetCode } from '../services/messageService.js';
 
 // POST /api/auth/admin/login
 export const adminLogin = async (req, res) => {
@@ -23,7 +26,8 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const { tokenId } = await createSessionForUser(user.id, req);
+    const token = jwt.sign({ userId: user.id, jti: tokenId, admin: true }, process.env.JWT_SECRET, { expiresIn: '365d' });
 
     res.json({
       token,
@@ -38,34 +42,36 @@ export const adminLogin = async (req, res) => {
 // POST /api/auth/admin/forgot-password
 export const adminForgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Email is required' });
 
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
-    }
+    const user = await prisma.user.findFirst({ where: { email, role: 'admin' }, select: { id: true, email: true, phoneNumber: true } });
+    // Keep account existence private.
+    if (!user) return res.json({ message: 'If an admin account matches, reset instructions will be sent.' });
 
-    const user = await prisma.user.findFirst({ where: { email, role: 'admin' } });
-
-    if (!user) {
-      return res.status(404).json({ error: 'Email not found. Please contact support.' });
-    }
-
-    // NOTE: No email-sending service (SMTP/SendGrid/Resend) is wired up in this
-    // project yet, so a real reset link can't be emailed out right now. This
-    // endpoint confirms the admin account exists so the frontend isn't relying
-    // on a hardcoded email check. Wire up an email provider here later to
-    // actually send the reset link.
-    res.json({ message: 'If email service is configured, a reset link would be sent here.' });
+    const otp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = await bcrypt.hash(otp, 10);
+    const challenge = await prisma.passwordResetChallenge.create({
+      data: { userId: user.id, otpHash, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+      select: { id: true }
+    });
+    const devMode = process.env.NODE_ENV !== 'production' && process.env.PASSWORD_RESET_DEV_MODE === 'true';
+    if (!devMode) await sendPasswordResetCode({ user, otp });
+    return res.json({
+      message: devMode ? 'OTP generated in development mode.' : 'If an admin account matches, reset instructions will be sent.',
+      data: { challengeId: challenge.id, ...(devMode ? { devOtp: otp } : {}) }
+    });
   } catch (error) {
     console.error('Admin forgot password error:', error);
-    res.status(500).json({ error: 'Failed to process request' });
+    if (error.message?.includes('not configured') || error.message?.includes('Resend email failed') || error.message?.includes('Twilio SMS failed')) return res.status(503).json({ error: 'Password reset delivery service is not configured correctly.' });
+    return res.status(500).json({ error: 'Failed to process request' });
   }
 };
 
 // GET /api/admin/stats
 export const getAdminStats = async (req, res) => {
   try {
-    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, totalViewsAgg, pendingReports] = await Promise.all([
+    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, totalViewsAgg, pendingReports, pendingPayoutsAgg] = await Promise.all([
       prisma.user.count(),
       prisma.post.count(),
       prisma.post.count({ where: { mediaType: 'video' } }),
@@ -73,15 +79,16 @@ export const getAdminStats = async (req, res) => {
       prisma.user.aggregate({ _sum: { earnings: true } }),
       prisma.post.aggregate({ _sum: { viewCount: true } }),
       prisma.report.count({ where: { status: 'pending' } }),
+      prisma.payout.aggregate({ where: { status: { in: ['pending', 'approved'] } }, _sum: { amount: true } }),
     ]);
 
-    // Payout requests are not implemented yet, so pendingPayouts remains 0.
+    // Pending/approved payout requests are reserved against creator earnings.
     // Views and pending reports come from the real database fields/models.
     res.json({
       totalUsers,
       totalPosts,
       totalReels,
-      pendingPayouts: 0,
+      pendingPayouts: pendingPayoutsAgg._sum.amount || 0,
       activeUsers,
       reportedContent: pendingReports,
       totalEarnings: earningsAgg._sum.earnings || 0,
@@ -317,9 +324,58 @@ export const updateReportStatus = async (req, res) => {
 
 export const getBroadcasts = async (req, res) => {
   try {
-    const broadcasts = await prisma.broadcast.findMany({ orderBy:{ createdAt:'desc' }, take:50 });
-    res.json(broadcasts.map(b => ({ id:b.id, title:b.title, message:b.message, target:b.audience, recipientCount:b.recipientCount, time:b.createdAt })));
+    const audience = String(req.query?.audience || 'all');
+    const allowed = ['all', 'all_users', 'active_users', 'paid_users', 'inactive_users'];
+    const where = allowed.includes(audience) && audience !== 'all' ? { audience } : {};
+    const broadcasts = await prisma.broadcast.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(parseInt(req.query?.limit, 10) || 50, 1), 200),
+      include: { _count: { select: { notifications: true } } },
+    });
+    const ids = broadcasts.map(b => b.id);
+    const readCounts = ids.length
+      ? await prisma.notification.groupBy({
+          by: ['broadcastId', 'isRead'],
+          where: { broadcastId: { in: ids } },
+          _count: { _all: true },
+        })
+      : [];
+    const counts = new Map();
+    for (const row of readCounts) {
+      const current = counts.get(row.broadcastId) || { read: 0, unread: 0 };
+      current[row.isRead ? 'read' : 'unread'] += row._count._all;
+      counts.set(row.broadcastId, current);
+    }
+    res.json(broadcasts.map(b => {
+      const c = counts.get(b.id) || { read: 0, unread: 0 };
+      const sent = b._count.notifications || b.recipientCount || 0;
+      return {
+        id: b.id, title: b.title, message: b.message, target: b.audience,
+        recipientCount: sent, deliveredCount: sent, readCount: c.read,
+        unreadCount: c.unread, readRate: sent ? Math.round((c.read / sent) * 100) : 0,
+        time: b.createdAt,
+      };
+    }));
   } catch (error) { console.error('Broadcast list error:', error); res.status(500).json({ error:'Failed to fetch broadcasts' }); }
+};
+
+export const getBroadcastReach = async (req, res) => {
+  try {
+    const audience = String(req.query?.audience || 'all_users');
+    if (!['all_users','active_users','paid_users','inactive_users'].includes(audience)) {
+      return res.status(400).json({ error: 'Invalid target audience' });
+    }
+    const where = audience === 'active_users'
+      ? { role: 'user', status: 'active' }
+      : audience === 'inactive_users'
+        ? { role: 'user', status: { not: 'active' } }
+        : audience === 'paid_users'
+          ? { role: 'user', monetizationStatus: 'approved' }
+          : { role: 'user' };
+    const count = await prisma.user.count({ where });
+    res.json({ audience, count });
+  } catch (error) { console.error('Broadcast reach error:', error); res.status(500).json({ error:'Failed to calculate broadcast reach' }); }
 };
 
 export const createBroadcast = async (req, res) => {
@@ -328,13 +384,180 @@ export const createBroadcast = async (req, res) => {
     const message = String(req.body?.message || '').trim().slice(0, 2000);
     const audience = String(req.body?.targetAudience || 'all_users');
     if (!title || !message) return res.status(400).json({ error:'Title and message are required' });
-    if (!['all_users','active_users','paid_users'].includes(audience)) return res.status(400).json({ error:'Invalid target audience' });
-    const where = audience === 'active_users' ? { status:'active', role:'user' } : audience === 'paid_users' ? { role:'user', monetizationStatus:'approved' } : { role:'user' };
+    if (!['all_users','active_users','paid_users','inactive_users'].includes(audience)) return res.status(400).json({ error:'Invalid target audience' });
+    const where = audience === 'active_users'
+      ? { role:'user', status:'active' }
+      : audience === 'inactive_users'
+        ? { role:'user', status:{ not:'active' } }
+        : audience === 'paid_users'
+          ? { role:'user', monetizationStatus:'approved' }
+          : { role:'user' };
     const recipients = await prisma.user.findMany({ where, select:{ id:true } });
     const broadcast = await prisma.broadcast.create({ data:{ senderId:req.userId, title, message, audience, recipientCount:recipients.length } });
     if (recipients.length) {
-      await prisma.notification.createMany({ data: recipients.map(u => ({ receiverId:u.id, senderId:req.userId, type:'broadcast', message:`${title}: ${message}` })) });
+      await prisma.notification.createMany({ data: recipients.map(u => ({
+        receiverId:u.id, senderId:req.userId, broadcastId:broadcast.id, type:'broadcast', message:`${title}: ${message}`
+      })) });
     }
-    res.status(201).json({ id:broadcast.id, title, message, target:audience, recipientCount:recipients.length, time:broadcast.createdAt });
+    res.status(201).json({ id:broadcast.id, title, message, target:audience, recipientCount:recipients.length, deliveredCount:recipients.length, readCount:0, time:broadcast.createdAt });
   } catch (error) { console.error('Create broadcast error:', error); res.status(500).json({ error:'Failed to send broadcast' }); }
+};
+
+// GET /api/admin/vibes?limit=50&status=all
+export const getAdminVibes = async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const requestedStatus = String(req.query.status || 'all');
+    const where = ['active', 'removed'].includes(requestedStatus) ? { status: requestedStatus } : {};
+    const vibes = await prisma.vibe.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } },
+    });
+    res.json(vibes.map(v => ({
+      id: v.id,
+      media_url: v.mediaUrl,
+      media_type: v.mediaType,
+      caption: v.caption,
+      privacy: v.privacy || 'everyone',
+      status: v.status,
+      moderation_reason: v.moderationReason,
+      moderated_at: v.moderatedAt,
+      expires_at: v.expiresAt,
+      created_at: v.createdAt,
+      user: v.user,
+    })));
+  } catch (error) {
+    console.error('Admin vibes error:', error);
+    res.status(500).json({ error: 'Failed to fetch Vibes' });
+  }
+};
+
+// PATCH /api/admin/vibes/:id/status
+export const updateVibeStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, reason } = req.body;
+    if (!['active', 'removed'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be "active" or "removed"' });
+    }
+    const vibe = await prisma.vibe.findUnique({ where: { id } });
+    if (!vibe) return res.status(404).json({ error: 'Vibe not found' });
+    const updated = await prisma.vibe.update({
+      where: { id },
+      data: {
+        status,
+        moderationReason: status === 'removed' ? String(reason || 'Removed by admin').trim().slice(0, 300) : null,
+        moderatedAt: new Date(),
+      },
+      select: { id: true, status: true, moderationReason: true, moderatedAt: true },
+    });
+    res.json(updated);
+  } catch (error) {
+    console.error('Admin vibe status error:', error);
+    res.status(500).json({ error: 'Failed to update Vibe status' });
+  }
+};
+
+// DELETE /api/admin/vibes/:id
+export const deleteAdminVibe = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const vibe = await prisma.vibe.findUnique({ where: { id } });
+    if (!vibe) return res.status(404).json({ error: 'Vibe not found' });
+    await prisma.vibe.delete({ where: { id } });
+    if (vibe.publicId) {
+      try {
+        const { cloudinary } = await import('../config/cloudinary.js');
+        await cloudinary.uploader.destroy(vibe.publicId, {
+          resource_type: vibe.resourceType || (vibe.mediaType === 'video' ? 'video' : 'image'),
+          type: 'upload'
+        });
+      } catch (cleanupError) {
+        console.warn('Admin Vibe media cleanup skipped:', cleanupError.message);
+      }
+    }
+    res.json({ message: 'Vibe permanently deleted' });
+  } catch (error) {
+    console.error('Admin delete vibe error:', error);
+    res.status(500).json({ error: 'Failed to delete Vibe' });
+  }
+};
+
+// GET /api/admin/payouts
+export const getAdminPayouts = async (req, res) => {
+  try {
+    const status = String(req.query.status || 'all');
+    const where = ['pending', 'approved', 'paid', 'rejected'].includes(status) ? { status } : {};
+    const payouts = await prisma.payout.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 200,
+      include: { user: { select: { id: true, username: true, fullName: true, email: true } } },
+    });
+    res.json(payouts.map((p) => ({ id:p.id, user_id:p.userId, username:p.user.username, full_name:p.user.fullName, email:p.user.email, amount:p.amount, currency:p.currency, method:p.method, account_label:p.accountLabel, status:p.status, admin_note:p.adminNote, requested_at:p.requestedAt, processed_at:p.processedAt, paid_at:p.paidAt })));
+  } catch (error) {
+    console.error('Admin payouts error:', error);
+    res.status(500).json({ error: 'Failed to fetch payouts' });
+  }
+};
+
+// PATCH /api/admin/payouts/:id/status
+export const updatePayoutStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, adminNote } = req.body || {};
+    if (!['approved', 'paid', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid payout status' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const payout = await tx.payout.findUnique({ where: { id } });
+      if (!payout) throw Object.assign(new Error('Payout not found'), { statusCode: 404 });
+      if (payout.status === 'paid' || payout.status === 'rejected') throw Object.assign(new Error(`Payout is already ${payout.status}`), { statusCode: 409 });
+      if (status === 'approved' && payout.status !== 'pending') throw Object.assign(new Error('Only pending payouts can be approved'), { statusCode: 409 });
+      if (status === 'paid' && !['pending', 'approved'].includes(payout.status)) throw Object.assign(new Error('Payout cannot be marked paid from its current status'), { statusCode: 409 });
+
+      if (status === 'paid') {
+        const updatedUser = await tx.user.updateMany({ where: { id: payout.userId, earnings: { gte: payout.amount } }, data: { earnings: { decrement: payout.amount } } });
+        if (updatedUser.count !== 1) throw Object.assign(new Error('Creator balance is insufficient for this payout'), { statusCode: 409 });
+      }
+
+      return tx.payout.update({ where: { id }, data: { status, adminNote: adminNote ? String(adminNote).slice(0, 500) : payout.adminNote, processedAt: new Date(), paidAt: status === 'paid' ? new Date() : payout.paidAt } });
+    });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Update payout status error:', error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Failed to update payout' });
+  }
+};
+
+
+// POST /api/admin/earnings/:userId
+// Records verified creator revenue in the immutable-ish earning ledger and
+// keeps the legacy User.earnings balance in sync for payout compatibility.
+export const creditCreatorEarning = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const amount = Number(req.body?.amount);
+    const source = String(req.body?.source || 'other').trim().toLowerCase();
+    const description = String(req.body?.description || '').trim().slice(0, 300) || null;
+    const postId = req.body?.postId ? String(req.body.postId) : null;
+    const allowedSources = new Set(['ads', 'membership', 'tips', 'brand_deal', 'bonus', 'other']);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000) return res.status(400).json({ error: 'Amount must be greater than 0 and at most 1,000,000' });
+    if (!allowedSources.has(source)) return res.status(400).json({ error: 'Invalid earning source' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, earnings: true } });
+      if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
+      if (postId) {
+        const post = await tx.post.findFirst({ where: { id: postId, userId }, select: { id: true } });
+        if (!post) throw Object.assign(new Error('Post not found for this creator'), { statusCode: 400 });
+      }
+      const earning = await tx.creatorEarning.create({ data: { userId, amount, source, description, postId } });
+      await tx.user.update({ where: { id: userId }, data: { earnings: { increment: amount } } });
+      return earning;
+    });
+    res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Credit creator earning error:', error);
+    res.status(error.statusCode || 500).json({ error: error.message || 'Failed to record creator earning' });
+  }
 };
