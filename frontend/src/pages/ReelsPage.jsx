@@ -238,7 +238,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
           </div>
         </div>
       )}
+      <ShareToChatModal open={!!shareChatReel} onClose={() => setShareChatReel(null)} item={shareChatReel ? { ...shareChatReel, currentUserId: currentUser?.id } : null} />
     </div>
-    <ShareToChatModal open={!!shareChatReel} onClose={() => setShareChatReel(null)} item={shareChatReel ? { ...shareChatReel, currentUserId: currentUser?.id } : null} />
   );
 }
