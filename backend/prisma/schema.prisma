@@ -125,6 +125,7 @@ model Post {
   content     String?
   mediaUrl    String?
   mediaType   String?
+  isCreatorAd Boolean  @default(false)
   status      String   @default("approved")
   viewCount   Int      @default(0)
   postViews   PostView[]

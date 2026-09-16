@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   createPost,
+  updatePost,
   getFeed,
   getPostById,
   likePost,
@@ -47,6 +48,7 @@ router.post('/', protect, createPost);
 router.get('/feed', getFeed);
 router.get('/:id', getPostById);
 router.delete('/:id', protect, deletePost);
+router.patch('/:id', protect, updatePost);
 router.patch('/:id/hide', protect, hidePost);
 router.post('/:id/report', protect, reportPost);
 router.post('/:id/view', protect, viewPost);

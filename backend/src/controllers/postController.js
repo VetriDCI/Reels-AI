@@ -3,7 +3,7 @@ import { cloudinary } from '../config/cloudinary.js';
 
 export const createPost = async (req, res) => {
   try {
-    const { content, mediaUrl, mediaType, hashtags } = req.body;
+    const { content, mediaUrl, mediaType, hashtags, isCreatorAd } = req.body;
     const userId = req.userId;
 
     if (!content && !mediaUrl) {
@@ -14,8 +14,16 @@ export const createPost = async (req, res) => {
       .map(tag => String(tag).trim().replace(/^#/, '').toLowerCase())
       .filter(Boolean))];
 
+    let creatorAd = Boolean(isCreatorAd);
+    if (creatorAd) {
+      const creator = await prisma.user.findUnique({ where: { id: userId }, select: { channelNumber: true, channelName: true } });
+      if (!creator?.channelNumber) {
+        return res.status(403).json({ success: false, message: 'Create your creator channel before posting a Creator Ad' });
+      }
+    }
+
     const post = await prisma.post.create({
-      data: { userId, content: content?.trim() || null, mediaUrl: mediaUrl || null, mediaType: mediaType || 'text' },
+      data: { userId, content: content?.trim() || null, mediaUrl: mediaUrl || null, mediaType: mediaType || 'text', isCreatorAd: creatorAd },
       include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
     });
 
@@ -34,6 +42,37 @@ export const createPost = async (req, res) => {
   } catch (error) {
     console.error('Create post error:', error);
     res.status(500).json({ success: false, message: 'Failed to create post' });
+  }
+};
+
+
+export const updatePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content, mediaUrl, mediaType, isCreatorAd } = req.body || {};
+    const existing = await prisma.post.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ success: false, message: 'Post not found' });
+    if (existing.userId !== req.userId) return res.status(403).json({ success: false, message: 'Not authorized to edit this post' });
+
+    if (Boolean(isCreatorAd)) {
+      const creator = await prisma.user.findUnique({ where: { id: req.userId }, select: { channelNumber: true } });
+      if (!creator?.channelNumber) return res.status(403).json({ success: false, message: 'Create your creator channel before editing a Creator Ad' });
+    }
+
+    const updated = await prisma.post.update({
+      where: { id },
+      data: {
+        content: content?.trim() || null,
+        mediaUrl: mediaUrl || null,
+        mediaType: mediaType || 'text',
+        isCreatorAd: Boolean(isCreatorAd),
+      },
+      include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
+    });
+    res.json({ success: true, message: 'Post updated successfully', data: updated });
+  } catch (error) {
+    console.error('Update post error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update post' });
   }
 };
 
