@@ -136,7 +136,7 @@ function AppContent() {
       )}
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
-        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} onSearch={openSearch} />}
+        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} />}
         {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} initialPostId={reelTarget?.id} />}
         {activeTab === 'ai' && <AIFeatures />}
         {activeTab === 'chat' && <ChatPage />}
@@ -232,7 +232,7 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTa
   );
 }
 
-function HomeFeed({ posts, setPosts, refreshKey, onOpenReel, onSearch }) {
+function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
   const fetchPosts = async () => {
     try {
       const response = await postAPI.getFeed();
@@ -255,21 +255,8 @@ function HomeFeed({ posts, setPosts, refreshKey, onOpenReel, onSearch }) {
     }
   };
 
-  const [searchText, setSearchText] = useState('');
-  const submitSearch = (e) => {
-    e?.preventDefault();
-    const q = searchText.trim();
-    if (!q) return;
-    onSearch(q);
-  };
-
-
   return (
     <div className="pt-20 px-4 pb-4 space-y-4">
-      <form onSubmit={submitSearch} className="max-w-2xl mx-auto relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-        <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search people, posts or hashtags" className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-full shadow-sm outline-none focus:ring-2 focus:ring-purple-300" />
-      </form>
       {posts.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-500">No posts yet. Be the first to post!</p>
