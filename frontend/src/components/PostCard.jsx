@@ -76,7 +76,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
   };
 
   return (
-    <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
+    <article className={`relative bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible ${menuOpen ? 'z-[80]' : 'z-0'}`}>
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3 min-w-0">
           <img src={post.user?.avatarUrl || `https://i.pravatar.cc/150?u=${post.user?.id}`} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
@@ -114,15 +114,17 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
         ) : <button type="button" onClick={recordView} className="block w-full text-left"><img src={post.mediaUrl} alt="Post media" loading="lazy" className="w-full max-h-[70vh] object-contain rounded-lg bg-gray-100" /></button>}
       </div>}
 
-      <div className="flex items-center gap-1.5 px-3 py-3 border-t overflow-x-auto whitespace-nowrap">
-        <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
-        <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
-        <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
-        <button onClick={() => setShareChatOpen(true)} className="action-btn hover:text-purple-600" title="Share to Chat"><Send className="w-5 h-5" /><span>Chat</span></button>
-        {post.mediaUrl && <button onClick={handleDownload} disabled={downloading} className="action-btn hover:text-purple-600 disabled:opacity-50"><Download className="w-5 h-5" /><span>{downloading ? 'Saving…' : 'Download'}</span></button>}
-        <div ref={menuRef} className="relative shrink-0 ml-auto">
-          <button onClick={() => setMenuOpen(v => !v)} className="action-btn" aria-expanded={menuOpen} aria-label="More options"><MoreHorizontal className="w-5 h-5" /></button>
-          {menuOpen && <div className="absolute right-0 bottom-10 z-[60] w-52 bg-white rounded-xl shadow-2xl border py-1">
+      <div className="relative px-3 py-3 border-t">
+        <div className="flex items-center gap-1.5 pr-12 overflow-x-auto whitespace-nowrap">
+          <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
+          <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
+          <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
+          <button onClick={() => setShareChatOpen(true)} className="action-btn hover:text-purple-600" title="Share to Chat"><Send className="w-5 h-5" /><span>Chat</span></button>
+          {post.mediaUrl && <button onClick={handleDownload} disabled={downloading} className="action-btn hover:text-purple-600 disabled:opacity-50"><Download className="w-5 h-5" /><span>{downloading ? 'Saving…' : 'Download'}</span></button>}
+        </div>
+        <div ref={menuRef} className="absolute right-3 bottom-3 z-[90]">
+          <button onClick={() => setMenuOpen(v => !v)} className="action-btn bg-white" aria-expanded={menuOpen} aria-haspopup="menu" aria-label="More options"><MoreHorizontal className="w-5 h-5" /></button>
+          {menuOpen && <div role="menu" className="absolute right-0 bottom-11 z-[100] w-56 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 py-1 overflow-hidden">
             {post.mediaUrl && <button onClick={saveToApp} className="menu-item"><Download className="w-4 h-4" />{saved ? 'Remove from Saved' : 'Save to Saved'}</button>}
             {post.mediaUrl && <button onClick={() => { window.open(post.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuOpen(false); }} className="menu-item"><ExternalLink className="w-4 h-4" />Open media</button>}
             <button onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/?post=${post.id}`); alert('Post link copied'); } catch {} setMenuOpen(false); }} className="menu-item"><Link2 className="w-4 h-4" />Copy link</button>
