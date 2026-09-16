@@ -73,6 +73,12 @@ export const savedPostAPI = {
   remove: (postId) => api.delete(`/saved-posts/${postId}`)
 };
 
+
+export const watchHistoryAPI = {
+  list: () => api.get('/watch-history'),
+  clear: () => api.delete('/watch-history')
+};
+
 export const reportAPI = {
   create: (postId, reason) => api.post(`/posts/${postId}/report`, { reason }),
   mine: () => api.get('/reports/mine'),
@@ -90,7 +96,7 @@ export const payoutAPI = {
 };
 
 export const searchAPI = {
-  search: (query, type = 'all') => api.get(`/search?query=${query}&type=${type}`)
+  search: (query, type = 'all') => api.get('/search', { params: { query: String(query || '').trim(), type } })
 };
 
 export const notificationAPI = {

@@ -22,6 +22,7 @@ import SavedPostsPage from './pages/SavedPostsPage';
 import DraftsPage from './pages/DraftsPage';
 import HashtagPage from './pages/HashtagPage';
 import ReportHistoryPage from './pages/ReportHistoryPage';
+import WatchHistoryPage from './pages/WatchHistoryPage';
 import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage';
 
 // Components
@@ -145,6 +146,7 @@ function AppContent() {
         {activeTab === 'saved' && <SavedPostsPage onBack={() => setActiveTab(savedReturnTab)} />}
         {activeTab === 'drafts' && <DraftsPage userId={user?.id} onBack={() => setActiveTab('me')} onEdit={(draft) => { setDraftToEdit(draft); setShowCreateModal(true); setActiveTab('home'); }} />}
         {activeTab === 'report-history' && <ReportHistoryPage onBack={() => setActiveTab('me')} />}
+        {activeTab === 'watch-history' && <WatchHistoryPage onBack={() => setActiveTab('me')} />}
         {activeTab === 'hashtag' && <HashtagPage name={hashtagName} onBack={() => setActiveTab(searchSource || 'home')} onOpenReel={openReel} />}
         {activeTab === 'public-profile' && <PublicProfilePage userId={publicProfileId} onBack={() => setActiveTab(searchSource || 'home')} />}
       </main>

@@ -36,6 +36,7 @@ function AIFeatures() {
   const [videoDuration, setVideoDuration] = useState('short');
   const [memoryMode, setMemoryMode] = useState(false);
   const [mediaGenerateMode, setMediaGenerateMode] = useState(null);
+  const [editSourceUrl, setEditSourceUrl] = useState('');
   const [aiWorkspace, setAiWorkspace] = useState('text');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoSaveChats, setAutoSaveChats] = useState(() => localStorage.getItem('ra-ai-auto-save') !== 'false');
@@ -97,6 +98,7 @@ function AIFeatures() {
     setVideoMode(false);
     setMemoryMode(false);
     setMediaGenerateMode(null);
+    setEditSourceUrl('');
     setAiWorkspace('text');
   };
 
@@ -124,6 +126,7 @@ function AIFeatures() {
     setVideoMode(false);
     setMemoryMode(false);
     setMediaGenerateMode(null);
+    setEditSourceUrl('');
   };
 
   const toggleMode = (mode) => {
@@ -331,6 +334,15 @@ function AIFeatures() {
     finally { setSending(false); }
   };
 
+  const startImageEdit = (imageUrl = '') => {
+    closeAllModes();
+    setMediaGenerateMode('edit-image');
+    setEditSourceUrl(imageUrl || '');
+    if (!imageUrl && !rawFiles.some((file) => file.type?.startsWith('image/'))) {
+      fileInputRef.current?.click();
+    }
+  };
+
   const runMediaGeneration = async () => {
     const prompt = inputText.trim();
     if (!prompt || sending || !mediaGenerateMode) return;
@@ -339,24 +351,34 @@ function AIFeatures() {
     setMessages((prev) => [...prev, { id: `media-user-${Date.now()}`, role: 'user', content: prompt }]);
     setInputText('');
     try {
-      const response = type === 'image'
-        ? await aiAPI.generateImage({ prompt, conversationId })
-        : await aiAPI.generateVideo({ prompt, duration: 4, conversationId });
-      const data = response.data?.data || {};
-      if (data.conversationId) setConversationId(data.conversationId);
-      setMessages((prev) => [...prev, {
-        id: `media-ai-${Date.now()}`,
-        role: 'assistant',
-        content: type === 'image' ? 'Image generated successfully.' : 'Video generated successfully.',
-        model: data.model,
-        mediaUrl: data.url,
-        mediaType: type,
-        mediaAI: true
-      }]);
+      if (type === 'edit-image') {
+        const sourceFile = rawFiles.find((file) => file.type?.startsWith('image/')) || null;
+        if (!sourceFile && !editSourceUrl) throw new Error('Please attach an image to edit, or choose Edit on a generated image.');
+        const response = await aiAPI.editImage(sourceFile, prompt, conversationId, editSourceUrl);
+        const data = response.data?.data || {};
+        if (data.conversationId) setConversationId(data.conversationId);
+        setMessages((prev) => [...prev, { id: data.messageId || `edit-ai-${Date.now()}`, role: 'assistant', content: 'Image edited successfully.', model: data.model, mediaUrl: data.url, mediaType: 'image', mediaAI: true }]);
+      } else {
+        const response = type === 'image'
+          ? await aiAPI.generateImage({ prompt, conversationId })
+          : await aiAPI.generateVideo({ prompt, duration: 4, conversationId });
+        const data = response.data?.data || {};
+        if (data.conversationId) setConversationId(data.conversationId);
+        setMessages((prev) => [...prev, {
+          id: `media-ai-${Date.now()}`,
+          role: 'assistant',
+          content: type === 'image' ? 'Image generated successfully.' : 'Video generated successfully.',
+          model: data.model,
+          mediaUrl: data.url,
+          mediaType: type,
+          mediaAI: true
+        }]);
+      }
       setMediaGenerateMode(null);
+      setEditSourceUrl('');
       await loadHistory();
     } catch (error) {
-      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || error.message || `${type === 'image' ? 'Image' : 'Video'} generation failed. Check the media generation API configuration.` }]);
+      setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || error.message || `${type === 'edit-image' ? 'Image editing' : type === 'image' ? 'Image' : 'Video'} failed. Check the media generation API configuration.` }]);
     } finally { setSending(false); }
   };
 
@@ -562,6 +584,7 @@ function AIFeatures() {
             <button onClick={() => toggleMode('creative')} title="Creative" className={`p-2 rounded-full border ${creativeMode ? 'bg-fuchsia-50 border-fuchsia-300 text-fuchsia-700' : 'hover:bg-gray-50'}`}><Palette size={17} /></button>
             <button onClick={() => toggleMode('video')} title="Video" className={`p-2 rounded-full border ${videoMode ? 'bg-cyan-50 border-cyan-300 text-cyan-700' : 'hover:bg-gray-50'}`}><Video size={17} /></button>
             <button onClick={() => toggleMode('image')} title="Generate Image" className={`p-2 rounded-full border ${mediaGenerateMode === 'image' ? 'bg-rose-50 border-rose-300 text-rose-700' : 'hover:bg-gray-50'}`}><ImageIcon size={17} /></button>
+                <button onClick={() => startImageEdit()} title="Edit an image" className={`p-2 rounded-full border ${mediaGenerateMode === 'edit-image' ? 'bg-violet-50 border-violet-300 text-violet-700' : 'hover:bg-gray-50'}`}><Wand2 size={17} /></button>
             <button onClick={() => toggleMode('mediaVideo')} title="Generate Video" className={`p-2 rounded-full border ${mediaGenerateMode === 'video' ? 'bg-sky-50 border-sky-300 text-sky-700' : 'hover:bg-gray-50'}`}><Wand2 size={17} /></button>
             <button onClick={() => toggleMode('memory')} title="Memory" className={`p-2 rounded-full border ${memoryMode ? 'bg-violet-50 border-violet-300 text-violet-700' : 'hover:bg-gray-50'}`}><Brain size={17} /></button>
             <button onClick={exportChat} disabled={!messages.length} className="p-2 rounded-full border hover:bg-gray-50 disabled:opacity-40" title="Export chat"><Download size={17} /></button>
@@ -619,7 +642,7 @@ function AIFeatures() {
                         </div>
                       )}
                       <div className="whitespace-pre-wrap break-words text-[15px] leading-6">{message.content}</div>
-                      {message.mediaUrl && message.mediaType === 'image' && <img src={message.mediaUrl} alt="AI generated" className="mt-3 max-w-full rounded-xl border" loading="lazy" />}
+                      {message.mediaUrl && message.mediaType === 'image' && <><img src={message.mediaUrl} alt="AI generated" className="mt-3 max-w-full rounded-xl border" loading="lazy" /><button onClick={() => startImageEdit(message.mediaUrl)} className="mt-2 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-gray-50"><Wand2 size={14} /> Edit image</button></>}
                       {message.mediaUrl && message.mediaType === 'video' && <video src={message.mediaUrl} controls playsInline className="mt-3 max-w-full rounded-xl border" />}
                       {message.mediaUrl && <a href={message.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-purple-600 hover:underline">Open generated {message.mediaType}</a>}
                       {(message.model || message.agent || message.vision || message.fileAI || message.coding || message.dataAI || message.socialAI || message.creativeAI || message.videoAI || message.memoryAI || message.mediaAI) && <div className="mt-2 text-[10px] opacity-50 flex flex-wrap gap-2">{message.model && <span>{message.model}</span>}{message.agent && <span>• Agent tools used</span>}{message.writing && <span>• Writing AI</span>}{message.vision && <span>• Vision analysis</span>}{message.fileAI && <span>• File analysis</span>}{message.coding && <span>• Coding AI</span>}{message.dataAI && <span>• Data & Reasoning</span>}{message.socialAI && <span>• Social & Reels</span>}{message.creativeAI && <span>• Creative AI</span>}{message.videoAI && <span>• Video AI</span>}{message.mediaAI && <span>• Media Generation</span>}{message.memoryAI && <span>• Memory</span>}</div>}
@@ -745,7 +768,7 @@ function AIFeatures() {
               {mediaGenerateMode && (
                 <div className={`mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${mediaGenerateMode === 'image' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-sky-200 bg-sky-50 text-sky-700'}`}>
                   {mediaGenerateMode === 'image' ? <ImageIcon size={15} /> : <Video size={15} />}
-                  <span className="font-semibold">{mediaGenerateMode === 'image' ? 'AI Image Generation' : 'AI Video Generation'}</span>
+                  <span className="font-semibold">{mediaGenerateMode === 'image' ? 'AI Image Generation' : mediaGenerateMode === 'edit-image' ? 'AI Image Editing' : 'AI Video Generation'}</span>
                   <span className="text-[11px] opacity-70">Powered by Pollinations</span>
                   <button onClick={() => setMediaGenerateMode(null)} className="ml-auto px-2 py-1 rounded-lg hover:bg-white/70">Cancel</button>
                 </div>

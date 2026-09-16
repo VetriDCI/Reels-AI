@@ -13,6 +13,7 @@ export const aiAPI = {
   creative: (data) => api.post('/ai/creative', data),
   video: (data) => api.post('/ai/video', data),
   generateImage: (data) => api.post('/ai/generate-image', data),
+  editImage: (file, prompt, conversationId, imageUrl = '') => { const formData = new FormData(); if (file) formData.append('image', file); formData.append('prompt', prompt); if (conversationId) formData.append('conversationId', conversationId); if (imageUrl) formData.append('imageUrl', imageUrl); return api.post('/ai/edit-image', formData); },
   generateVideo: (data) => api.post('/ai/generate-video', data),
   transcribe: (file) => { const formData = new FormData(); formData.append('audio', file); return api.post('/ai/transcribe', formData); },
   memories: () => api.get('/ai/memory'),

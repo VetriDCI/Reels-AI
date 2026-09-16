@@ -76,7 +76,6 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
   };
 
   return (
-    <>
     <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -144,9 +143,8 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
           <div className="p-3 border-t">{replyTo && <div className="flex items-center justify-between text-xs text-purple-600 mb-2">Replying to {replyTo.user?.fullName || replyTo.user?.username}<button onClick={() => setReplyTo(null)}><X className="w-4 h-4" /></button></div>}<div className="flex gap-2"><input autoFocus value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addComment()} placeholder={replyTo ? 'Write a reply…' : 'Write a comment…'} className="flex-1 border rounded-full px-4 py-2 text-sm outline-none" /><button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white"><Send className="w-4 h-4" /></button></div></div>
         </div>
       </div>}
-    </article>
       <ShareToChatModal open={shareChatOpen} onClose={() => setShareChatOpen(false)} item={{ ...post, currentUserId: user?.id }} />
-    </>
+    </article>
   );
 }
 export default PostCard;

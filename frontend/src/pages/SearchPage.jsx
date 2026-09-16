@@ -18,6 +18,7 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [following, setFollowing] = useState({});
+  const [error, setError] = useState('');
 
 
   useEffect(() => {
@@ -49,17 +50,24 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
     setQuery(q);
     saveHistory(q);
     setLoading(true);
+    setError('');
     try {
       // A normal search is one unified search. There are no All/User/Post/Hashtag tabs.
-      const response = await api.get(`/search?query=${encodeURIComponent(q)}&type=all`);
-      setResults(response.data.data || { users: [], posts: [], hashtags: [] });
+      const response = await api.get('/search', { params: { query: q, type: 'all' } });
+      const data = response.data?.data || {};
+      setResults({
+        users: Array.isArray(data.users) ? data.users : [],
+        posts: Array.isArray(data.posts) ? data.posts : [],
+        hashtags: Array.isArray(data.hashtags) ? data.hashtags : []
+      });
     } catch (error) {
       console.error('Search failed:', error);
       setResults({ users: [], posts: [], hashtags: [] });
+      setError(error?.response?.data?.message || 'Search is temporarily unavailable. Please try again.');
     } finally { setLoading(false); }
   };
 
-  const clearSearch = () => { setQuery(''); setResults(null); };
+  const clearSearch = () => { setQuery(''); setResults(null); setError(''); };
 
   const resultCount = (results?.users?.length || 0) + (results?.posts?.length || 0) + (results?.hashtags?.length || 0);
 
@@ -113,6 +121,7 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
 
         {results && !loading && (
           <div className="space-y-3 mt-5">
+            {error && <div className="p-3 rounded-xl bg-red-50 text-red-700 text-sm border border-red-100">{error}</div>}
             {resultCount === 0 && <div className="text-center py-20 text-gray-500">No results found</div>}
             {[...(results.users || []).map(u => ({ kind: 'user', id: `user-${u.id}`, item: u })),
               ...(results.posts || []).map(post => ({ kind: 'post', id: `post-${post.id}`, item: post })),
