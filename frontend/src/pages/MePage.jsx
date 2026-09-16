@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Calendar, Briefcase, Wallet, Folder, Shield, Eye, Bell, Bookmark, Flag,
-  Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard, FileText, Clock3
+  Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard, FileText, Clock3, Megaphone
 } from 'lucide-react';
 import api, { postAPI } from '../services/api';
 import PostCard from '../components/PostCard';
@@ -25,6 +25,7 @@ import SavedPostsPage from './SavedPostsPage';
 import AccountDataPage from './settings/AccountDataPage';
 import WatchHistoryPage from './WatchHistoryPage';
 import CreatorDashboardPage from './CreatorDashboardPage';
+import CreatorAdsPage from './CreatorAdsPage';
 
 const creatorMenuItems = [
   { key: 'analytics', label: 'Creator Analytics', icon: BarChart3, color: 'from-blue-500 to-cyan-400' },
@@ -118,6 +119,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
   if (view === 'saved') return <SavedPostsPage onBack={back} />;
   if (view === 'watch-history') return <WatchHistoryPage onBack={back} />;
   if (view === 'creator-dashboard') return <CreatorDashboardPage onBack={back} />;
+  if (view === 'creator-ads') return <CreatorAdsPage user={user} onBack={back} />;
 
   const postsCount = user?.postsCount ?? user?.posts?.length ?? 0;
   const followersCount = user?.followersCount ?? user?.followers?.length ?? 0;
@@ -221,6 +223,14 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
           <button onClick={() => setView('creator-dashboard')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-blue-50 border border-blue-100">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center"><BarChart3 className="w-5 h-5 text-white" /></div>
             <div className="flex-1"><p className="font-bold text-gray-800">Creator Dashboard</p><p className="text-xs text-gray-500">Live content, views, followers, earnings & creator tools</p></div>
+            <ChevronRight className="w-4 h-4 text-gray-300" />
+          </button>
+        )}
+
+        {hasChannel && (
+          <button onClick={() => setView('creator-ads')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-purple-50 border border-purple-100">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"><Megaphone className="w-5 h-5 text-white" /></div>
+            <div className="flex-1"><p className="font-bold text-gray-800">Creator Ads</p><p className="text-xs text-gray-500">Create, upload, edit and manage ads — shown on Home + Reels</p></div>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </button>
         )}

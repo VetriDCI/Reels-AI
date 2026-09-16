@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Film, Image as ImageIcon, Search as SearchIcon, RefreshCw } from 'lucide-react';
+import { Bell, Film, Search as SearchIcon, RefreshCw } from 'lucide-react';
 import { postAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
@@ -14,9 +14,12 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
     try {
       const res = await postAPI.getFeed(1, 50);
       const posts = res.data?.data || [];
-      setItems(posts);
+      // Reels contains normal video reels plus explicitly marked Creator Ads.
+      // Normal image/text posts stay on Home/feed; only Creator Ads are mixed into Reels.
+      const reels = posts.filter(post => post?.mediaType === 'video' || post?.isCreatorAd === true);
+      setItems(reels);
       if (initialPostId) setTimeout(() => document.getElementById(`reel-post-${initialPostId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    } catch (e) { console.error('Failed to load reels/content feed', e); }
+    } catch (e) { console.error('Failed to load reels feed', e); }
     finally { setLoading(false); setRefreshing(false); }
   };
 
@@ -33,7 +36,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
     } catch (e) { console.error('Failed to like post', e); }
   };
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white">Loading content…</div>;
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white">Loading reels…</div>;
 
   return <div className="min-h-screen bg-gray-50 pb-24">
     <header className="sticky top-0 z-40 bg-black text-white px-4 py-3 flex items-center gap-3 shadow-md">
@@ -43,8 +46,8 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
       <button onClick={onNotifications} aria-label="Notifications" className="relative p-1"><Bell className="w-5 h-5" />{unreadNotificationCount > 0 && <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] rounded-full bg-red-500 text-[9px] leading-[16px] text-center font-bold">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button>
     </header>
 
-    <div className="px-4 py-3 bg-white border-b"><p className="font-bold text-gray-800">Reels & Posts</p><p className="text-xs text-gray-500 mt-0.5">Videos, images, text posts and other content from RA Social users</p></div>
+    <div className="px-4 py-3 bg-white border-b"><p className="font-bold text-gray-800">Reels</p><p className="text-xs text-gray-500 mt-0.5">Video reels + Creator Ads</p></div>
 
-    {!items.length ? <div className="py-24 text-center text-gray-400"><ImageIcon className="w-12 h-12 mx-auto mb-3" /><p>No posts yet</p></div> : <div className="max-w-2xl mx-auto px-3 py-4 space-y-4">{items.map(post => <div id={`reel-post-${post.id}`} key={post.id}><PostCard post={post} onLike={() => handleLike(post.id)} /></div>)}</div>}
+    {!items.length ? <div className="py-24 text-center text-gray-400"><Film className="w-12 h-12 mx-auto mb-3" /><p>No reels yet</p></div> : <div className="max-w-2xl mx-auto px-3 py-4 space-y-4">{items.map(post => <div id={`reel-post-${post.id}`} key={post.id}><PostCard post={post} onLike={() => handleLike(post.id)} /></div>)}</div>}
   </div>;
 }

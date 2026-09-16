@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { X, Image, Video, Radio, RotateCcw, Pencil, Check, RefreshCw, Play, Pause } from 'lucide-react';
 import { postAPI, uploadAPI } from '../services/api';
 
-function CreatePostModal({ onClose, onPostCreated, userId, initialDraft, onDraftSaved }) {
+function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, initialDraft, onDraftSaved }) {
   const [content, setContent] = useState(initialDraft?.content || '');
   const [savedDraftId, setSavedDraftId] = useState(initialDraft?.id || null);
   const [draftSaving, setDraftSaving] = useState(false);
@@ -14,6 +14,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, initialDraft, onDraft
   const [liveState, setLiveState] = useState('idle');
   const [cameraError, setCameraError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const [isCreatorAd, setIsCreatorAd] = useState(Boolean(initialDraft?.isCreatorAd));
   const [imageRotation, setImageRotation] = useState(0);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
@@ -115,7 +116,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, initialDraft, onDraft
       const key = `ra-social-drafts-${userId || 'guest'}`;
       const existing = JSON.parse(localStorage.getItem(key) || '[]');
       const id = savedDraftId || crypto.randomUUID();
-      const draft = { id, content: content.trim(), mediaUrl, mediaType, createdAt: initialDraft?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const draft = { id, content: content.trim(), mediaUrl, mediaType, isCreatorAd, createdAt: initialDraft?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
       const next = [draft, ...existing.filter(d => d.id !== id)].slice(0, 50);
       localStorage.setItem(key, JSON.stringify(next)); setSavedDraftId(id); onDraftSaved?.();
       alert('Draft saved');
@@ -135,7 +136,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, initialDraft, onDraft
         mediaType = upload.data.data.mediaType;
       }
       setUploadStage('publishing');
-      await postAPI.create({ content: content.trim(), mediaUrl, mediaType });
+      await postAPI.create({ content: content.trim(), mediaUrl, mediaType, isCreatorAd: false });
       if (savedDraftId) { const key = `ra-social-drafts-${userId || 'guest'}`; const drafts = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify(drafts.filter(d => d.id !== savedDraftId))); }
       onPostCreated?.();
       stopCamera();
@@ -166,7 +167,6 @@ function CreatePostModal({ onClose, onPostCreated, userId, initialDraft, onDraft
 
         <div className="p-4 space-y-4">
           <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="What's on your mind?" className="w-full h-32 resize-none focus:outline-none text-gray-800" />
-
 
           {!previewUrl && !livePreview && (
             <div className="grid grid-cols-3 gap-3">

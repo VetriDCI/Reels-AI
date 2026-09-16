@@ -57,6 +57,7 @@ export const postAPI = {
   create: (data) => api.post('/posts', data),
   getFeed: (page = 1, limit = 10) => api.get(`/posts/feed?page=${page}&limit=${limit}`),
   getById: (id) => api.get(`/posts/${id}`),
+  update: (id, data) => api.patch(`/posts/${id}`, data),
   delete: (id) => api.delete(`/posts/${id}`),
   hide: (id) => api.patch(`/posts/${id}/hide`),
   like: (id) => api.post(`/posts/${id}/like`),
