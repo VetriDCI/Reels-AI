@@ -216,10 +216,14 @@ export const viewPost = async (req, res) => {
         prisma.postView.create({ data: { userId, postId } }),
         prisma.post.update({ where: { id: postId }, data: { viewCount: { increment: 1 } } })
       ]);
+    } else {
+      // PostView is also the user's watch-history record. Keep one row per
+      // post/user while moving it to the latest watch time.
+      await prisma.postView.update({ where: { id: existing.id }, data: { createdAt: new Date() } });
     }
 
     const updated = await prisma.post.findUnique({ where: { id: postId }, select: { viewCount: true } });
-    res.json({ success: true, data: { viewCount: updated?.viewCount || 0, counted: !existing } });
+    res.json({ success: true, data: { viewCount: updated?.viewCount || 0, counted: !existing, watchedAt: new Date().toISOString() } });
   } catch (error) {
     console.error('View post error:', error);
     res.status(500).json({ success: false, message: 'Failed to record view' });

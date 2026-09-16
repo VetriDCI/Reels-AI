@@ -390,6 +390,57 @@ GroqAIService.prototype.transcribeAudio = async function (buffer, filename, mime
 
 
 
+GroqAIService.prototype.editImage = async function (imageBuffer, filename, mimeType, prompt, options = {}) {
+  const text = String(prompt || '').trim().slice(0, 4000);
+  if (!text) return { success: false, error: 'Image edit prompt is required.' };
+  if (!imageBuffer?.length) return { success: false, error: 'An image is required for editing.' };
+
+  const apiKey = String(process.env.POLLINATIONS_API_KEY || '').trim();
+  if (!apiKey || apiKey.includes('your-pollinations')) {
+    return { success: false, error: 'Pollinations API key is missing. Add a server-side sk_... key as POLLINATIONS_API_KEY in Render → Environment, then redeploy.' };
+  }
+
+  const base = String(process.env.POLLINATIONS_BASE_URL || 'https://gen.pollinations.ai').replace(/\/$/, '');
+  const model = String(options.model || process.env.POLLINATIONS_EDIT_MODEL || 'p-image-edit');
+  const form = new FormData();
+  form.append('model', model);
+  form.append('prompt', text);
+  form.append('image', new Blob([imageBuffer], { type: mimeType || 'image/jpeg' }), filename || 'image.jpg');
+
+  try {
+    const response = await axios.post(`${base}/v1/images/edits`, form, {
+      timeout: 180000,
+      maxContentLength: 25 * 1024 * 1024,
+      maxBodyLength: 25 * 1024 * 1024,
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      validateStatus: () => true
+    });
+    const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
+    if (response.status < 200 || response.status >= 300) {
+      const detail = response.data?.error?.message || response.data?.error || response.data?.message || (typeof response.data === 'string' ? response.data.slice(0, 700) : '');
+      return { success: false, error: detail || `Pollinations image edit failed (${response.status}).` };
+    }
+
+    const item = response.data?.data?.[0] || response.data?.images?.[0] || response.data?.output?.[0] || response.data?.output;
+    let buffer = null;
+    if (item?.b64_json) buffer = Buffer.from(item.b64_json, 'base64');
+    else if (item?.base64) buffer = Buffer.from(item.base64, 'base64');
+    else if (item?.url) {
+      const media = await axios.get(item.url, { responseType: 'arraybuffer', timeout: 120000 });
+      buffer = Buffer.from(media.data);
+    } else if (Buffer.isBuffer(response.data)) buffer = response.data;
+
+    if (!buffer?.length) {
+      return { success: false, error: contentType.includes('json') ? 'Pollinations image edit returned no image data.' : 'Pollinations image edit returned an unsupported response.' };
+    }
+    return { success: true, type: 'image', model, buffer, contentType: 'image/png', provider: 'Pollinations' };
+  } catch (error) {
+    const status = error?.response?.status;
+    const detail = error?.response?.data?.error?.message || error?.response?.data?.message;
+    return { success: false, error: detail || (status ? `Pollinations image edit failed (${status}).` : error?.message || 'Pollinations image edit failed.') };
+  }
+};
+
 GroqAIService.prototype.generateMedia = async function (prompt, options = {}) {
   const text = String(prompt || '').trim().slice(0, 4000);
   if (!text) return { success: false, error: 'Generation prompt is required.' };

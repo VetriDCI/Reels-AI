@@ -22,6 +22,8 @@ import reportRoutes from './routes/reportRoutes.js';
 import adRoutes from './routes/adRoutes.js';
 import accountRoutes from './routes/accountRoutes.js';
 import sessionRoutes from './routes/sessionRoutes.js';
+import watchHistoryRoutes from './routes/watchHistoryRoutes.js';
+import { cleanupOldWatchHistory } from './controllers/watchHistoryController.js';
 import prisma from './config/database.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -73,6 +75,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/ads', adRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/watch-history', watchHistoryRoutes);
 app.set('io', io);
 
 app.get('/api/health', (req, res) => {
@@ -140,6 +143,8 @@ const PORT = process.env.PORT || 5000;
 // Keep expired 24-hour Vibes cleaned up even when nobody opens the Chat page.
 setInterval(() => cleanupExpiredVibes().catch((error) => console.error('Vibe cleanup error:', error)), 10 * 60 * 1000);
 cleanupExpiredVibes().catch((error) => console.error('Initial Vibe cleanup error:', error));
+cleanupOldWatchHistory().catch((error) => console.error('Initial watch-history cleanup error:', error));
+setInterval(() => cleanupOldWatchHistory().catch((error) => console.error('Watch-history cleanup error:', error)), 60 * 60 * 1000);
 
 app.get('/', (req, res) => res.json({ success: true, message: 'RA Social API is running' }));
 

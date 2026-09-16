@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import { cloudinary } from '../config/cloudinary.js';
@@ -441,6 +442,41 @@ export const generateAIImage = async (req, res) => {
   } catch (error) {
     console.error('AI image generation error:', error);
     res.status(500).json({ success: false, message: error?.message || 'Image generation failed' });
+  }
+};
+
+export const editAIImage = async (req, res) => {
+  try {
+    const { prompt = '', conversationId, model = '', imageUrl = '' } = req.body || {};
+    if (!prompt.trim()) return res.status(400).json({ success: false, message: 'Image edit prompt is required' });
+    let imageBuffer = req.file?.buffer || null;
+    let imageName = req.file?.originalname || 'source-image.jpg';
+    let imageMime = req.file?.mimetype || 'image/jpeg';
+    if (!imageBuffer && imageUrl) {
+      try {
+        const source = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 120000, maxContentLength: 25 * 1024 * 1024 });
+        imageBuffer = Buffer.from(source.data);
+        imageMime = String(source.headers?.['content-type'] || 'image/jpeg').split(';')[0];
+      } catch (_) {
+        return res.status(400).json({ success: false, message: 'Could not load the source image for editing' });
+      }
+    }
+    if (!imageBuffer?.length) return res.status(400).json({ success: false, message: 'Please attach an image to edit' });
+    if (!imageMime.startsWith('image/')) return res.status(400).json({ success: false, message: 'Only image files can be edited' });
+
+    const result = await groqAI.editImage(imageBuffer, imageName, imageMime, prompt, { model });
+    if (!result.success) return res.status(503).json({ success: false, message: result.error });
+    const uploaded = await uploadGeneratedMedia(result.buffer, result.contentType, 'image');
+    const url = uploaded.secure_url || uploaded.url;
+    let conversation = conversationId ? await prisma.aIConversation.findFirst({ where: { id: conversationId, userId: req.userId } }) : null;
+    if (!conversation) conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title: `Edit: ${prompt.trim().slice(0, 65)}` } });
+    await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'user', content: prompt.trim(), attachments: [{ type: 'image', name: req.file.originalname || 'source image' }] } });
+    const message = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: 'assistant', content: 'Image edited successfully.', model: result.model || null, attachments: [{ url, type: 'image', name: 'AI edited image', provider: result.provider }] } });
+    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
+    res.json({ success: true, data: { url, type: 'image', model: result.model, provider: result.provider, conversationId: conversation.id, messageId: message.id } });
+  } catch (error) {
+    console.error('AI image edit error:', error);
+    res.status(500).json({ success: false, message: error?.message || 'Image editing failed' });
   }
 };
 

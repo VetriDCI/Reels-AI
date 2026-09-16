@@ -21,7 +21,7 @@ import {
   aiCapabilities,
   aiHealth,
   aiUsage,
-  generateAIImage,
+  generateAIImage, editAIImage,
   generateAIVideo
 } from '../controllers/aiController.js';
 import { protect } from '../middleware/authMiddleware.js';
@@ -32,6 +32,7 @@ router.get('/capabilities', protect, aiCapabilities);
 router.get('/health', protect, aiHealth);
 router.get('/usage', protect, aiUsage);
 router.post('/generate-image', protect, generateAIImage);
+router.post('/edit-image', protect, aiUpload.single('image'), editAIImage);
 router.post('/generate-video', protect, generateAIVideo);
 router.get('/history', protect, listAIConversations);
 router.get('/history/:id', protect, getAIConversation);
