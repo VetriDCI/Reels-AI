@@ -185,7 +185,7 @@ export const getMe = async (req, res) => {
         id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, earnings: true,
         monetizationStatus: true, monetizationAppliedAt: true, monetizationApprovedAt: true, createdAt: true,
         channelNumber: true, channelName: true, channelCreatedAt: true,
-        posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' }, take: 9 },
+        posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, isCreatorAd: true, status: true, viewCount: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' } },
         _count: { select: { followers: true, following: true } }
       }
     });
