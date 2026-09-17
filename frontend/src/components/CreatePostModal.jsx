@@ -19,7 +19,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   const [imageRotation, setImageRotation] = useState(0);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
-  const multiMediaInputRef = useRef(null);
+  const appendSelectionRef = useRef(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -58,38 +58,28 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     }
   };
 
-  const pickPhoto = () => photoInputRef.current?.click();
-  const pickVideo = () => videoInputRef.current?.click();
-  const pickMultipleMedia = () => multiMediaInputRef.current?.click();
+  const pickPhoto = (append = false) => { appendSelectionRef.current = append; photoInputRef.current?.click(); };
+  const pickVideo = (append = false) => { appendSelectionRef.current = append; videoInputRef.current?.click(); };
 
-  const onFileChosen = (chosenFile, kind) => {
-    if (!chosenFile) return;
-    const limit = 50 * 1024 * 1024;
-    if (chosenFile.size > limit) {
-      alert('Please choose a file smaller than 50 MB.');
-      return;
-    }
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFiles([chosenFile]);
-    setFile(chosenFile);
-    setMediaKind(kind);
-    setPreviewUrl(URL.createObjectURL(chosenFile));
-    setImageRotation(0);
-    setEditOpen(false);
-  };
-
-  const onMultipleFilesChosen = (event) => {
+  const onMediaFilesChosen = (event, kind) => {
     const selected = Array.from(event.target.files || []);
     event.target.value = '';
     if (!selected.length) return;
-    const valid = selected.filter(f => f.size <= 50 * 1024 * 1024 && (f.type.startsWith('image/') || f.type.startsWith('video/')));
-    if (valid.length !== selected.length) alert('Only image/video files under 50 MB are allowed.');
+    const limit = 50 * 1024 * 1024;
+    const expectedPrefix = kind === 'video' ? 'video/' : 'image/';
+    const valid = selected.filter(f => f.size <= limit && f.type.startsWith(expectedPrefix));
+    if (valid.length !== selected.length) {
+      alert(`Only ${kind === 'video' ? 'video' : 'image'} files under 50 MB are allowed.`);
+    }
     if (!valid.length) return;
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFiles(valid);
-    setFile(valid[0]);
-    setMediaKind(valid[0].type.startsWith('video/') ? 'video' : 'photo');
-    setPreviewUrl(URL.createObjectURL(valid[0]));
+    const appending = appendSelectionRef.current;
+    const nextFiles = appending ? [...files, ...valid] : [...valid];
+    appendSelectionRef.current = false;
+    if (previewUrl && !appending) URL.revokeObjectURL(previewUrl);
+    setFiles(nextFiles);
+    setFile(nextFiles[0]);
+    setMediaKind(kind);
+    setPreviewUrl(URL.createObjectURL(nextFiles[0]));
     setImageRotation(0);
     setEditOpen(false);
   };
@@ -189,15 +179,12 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
           <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="What's on your mind?" className="w-full h-32 resize-none focus:outline-none text-gray-800" />
 
           {!previewUrl && !livePreview && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <button type="button" onClick={pickPhoto} className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-5 hover:bg-gray-50">
-                <Image className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Photo</span><span className="text-[11px] text-gray-400">From device</span>
+                <Image className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Photo</span><span className="text-[11px] text-gray-400">Select multiple photos</span>
               </button>
               <button type="button" onClick={pickVideo} className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-5 hover:bg-gray-50">
-                <Video className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Video</span><span className="text-[11px] text-gray-400">From device</span>
-              </button>
-              <button type="button" onClick={pickMultipleMedia} className="flex flex-col items-center gap-2 border-2 border-dashed border-purple-300 bg-purple-50 rounded-xl py-5 hover:bg-purple-100">
-                <Image className="w-7 h-7 text-purple-600" /><span className="text-sm font-semibold text-purple-700">Multiple</span><span className="text-[11px] text-purple-500">Images / videos</span>
+                <Video className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Video</span><span className="text-[11px] text-gray-400">Select multiple videos</span>
               </button>
               <button type="button" onClick={startLivePreview} className="flex flex-col items-center gap-2 border-2 border-red-300 bg-red-50 rounded-xl py-5 hover:bg-red-100">
                 <Radio className="w-7 h-7 text-red-600" /><span className="text-sm font-bold text-red-600">LIVE</span><span className="text-[11px] text-red-500">Camera</span>
@@ -205,9 +192,8 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
             </div>
           )}
 
-          <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={e => onFileChosen(e.target.files?.[0] || null, 'photo')} />
-          <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={e => onFileChosen(e.target.files?.[0] || null, 'video')} />
-          <input ref={multiMediaInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={onMultipleFilesChosen} />
+          <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => onMediaFilesChosen(e, 'photo')} />
+          <input ref={videoInputRef} type="file" accept="video/*" multiple className="hidden" onChange={e => onMediaFilesChosen(e, 'video')} />
 
           {previewUrl && (
             <div className="rounded-xl overflow-hidden border bg-gray-50">
@@ -221,8 +207,8 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
                 </div>
               </div>
               <div className="p-3 flex items-center justify-between">
-                <div className="min-w-0"><p className="text-sm font-semibold truncate">{files.length > 1 ? `${files.length} media files selected` : file?.name}</p><p className="text-xs text-gray-500">{files.length > 1 ? 'Each file will be posted separately.' : `${mediaKind === 'video' ? 'Video' : 'Image'} · ${(file?.size / 1024 / 1024).toFixed(1)} MB`}</p></div>
-                <button type="button" onClick={pickMultipleMedia} className="flex items-center gap-1 px-3 py-2 rounded-full bg-gray-100 text-sm font-medium"><RefreshCw className="w-4 h-4" />Add more</button>
+                <div className="min-w-0"><p className="text-sm font-semibold truncate">{files.length > 1 ? `${files.length} media files selected` : file?.name}</p><p className="text-xs text-gray-500">{files.length > 1 ? `Each ${mediaKind === 'video' ? 'video' : 'photo'} will be posted separately.` : `${mediaKind === 'video' ? 'Video' : 'Image'} · ${(file?.size / 1024 / 1024).toFixed(1)} MB`}</p></div>
+                <button type="button" onClick={() => (mediaKind === 'video' ? pickVideo(true) : pickPhoto(true))} className="flex items-center gap-1 px-3 py-2 rounded-full bg-gray-100 text-sm font-medium"><RefreshCw className="w-4 h-4" />Add more {mediaKind === 'video' ? 'videos' : 'photos'}</button>
               </div>
               {files.length > 1 && <div className="px-3 pb-3 flex gap-2 overflow-x-auto">{files.map((item, index) => <div key={`${item.name}-${index}`} className="relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border bg-black">{item.type.startsWith('video/') ? <div className="w-full h-full flex items-center justify-center text-white"><Video className="w-6 h-6" /></div> : <img src={URL.createObjectURL(item)} alt="" className="w-full h-full object-cover" />}</div>)}</div>}
             </div>

@@ -13,6 +13,7 @@ export default function CreatorAdsPage({ user, onBack }) {
   const [editing, setEditing] = useState(null);
   const [content, setContent] = useState('');
   const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [preview, setPreview] = useState('');
   const [dirty, setDirty] = useState(false);
   const [uploadName, setUploadName] = useState('');
@@ -34,17 +35,22 @@ export default function CreatorAdsPage({ user, onBack }) {
 
   const reset = () => {
     if (preview) URL.revokeObjectURL(preview);
-    setEditing(null); setContent(''); setFile(null); setPreview(''); setDirty(false); setUploadName('');
+    setEditing(null); setContent(''); setFile(null); setFiles([]); setPreview(''); setDirty(false); setUploadName('');
     if (inputRef.current) inputRef.current.value = '';
   };
 
   const chooseFile = (e) => {
-    const next = e.target.files?.[0];
-    if (!next) return;
-    if (!ACCEPTED.some(prefix => next.type?.startsWith(prefix))) return alert('Only image or video files are supported.');
-    if (next.size > MAX) return alert('Please choose a file smaller than 50 MB.');
-    if (preview) URL.revokeObjectURL(preview);
-    setFile(next); setPreview(URL.createObjectURL(next)); setUploadName(next.name); setDirty(true);
+    const selected = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!selected.length) return;
+    const valid = selected.filter(next => ACCEPTED.some(prefix => next.type?.startsWith(prefix)) && next.size <= MAX);
+    if (valid.length !== selected.length) return alert('Only image/video files under 50 MB are supported.');
+    if (preview && !editing?.mediaUrl) URL.revokeObjectURL(preview);
+    setFiles(valid);
+    setFile(valid[0]);
+    setPreview(URL.createObjectURL(valid[0]));
+    setUploadName(valid.length > 1 ? `${valid.length} media files selected` : valid[0].name);
+    setDirty(true);
   };
 
   const startCreate = () => { reset(); setEditing({ id: null }); };
@@ -52,6 +58,7 @@ export default function CreatorAdsPage({ user, onBack }) {
     reset();
     setEditing(ad);
     setContent(ad.content || '');
+    setFiles(ad.mediaUrl ? [null] : []);
     setPreview(ad.mediaUrl || '');
     setUploadName(ad.mediaUrl ? 'Existing media' : '');
     setDirty(false);
@@ -62,16 +69,28 @@ export default function CreatorAdsPage({ user, onBack }) {
     if (content.length > MAX_TEXT) return alert(`Ad text must be ${MAX_TEXT} characters or less.`);
     setSaving(true);
     try {
-      let mediaUrl = editing?.mediaUrl || null;
-      let mediaType = editing?.mediaType || 'text';
-      if (file) {
-        const up = await uploadAPI.media(file);
-        mediaUrl = up.data.data.url;
-        mediaType = up.data.data.mediaType;
-      }
       if (editing?.id) {
+        let mediaUrl = editing.mediaUrl || null;
+        let mediaType = editing.mediaType || 'text';
+        if (file) {
+          const up = await uploadAPI.media(file);
+          mediaUrl = up.data.data.url;
+          mediaType = up.data.data.mediaType;
+        }
         await postAPI.update(editing.id, { content: content.trim(), mediaUrl, mediaType, isCreatorAd: true });
+      } else if (files.length > 1) {
+        for (const selectedFile of files) {
+          const up = await uploadAPI.media(selectedFile);
+          await postAPI.create({ content: content.trim(), mediaUrl: up.data.data.url, mediaType: up.data.data.mediaType, isCreatorAd: true });
+        }
       } else {
+        let mediaUrl = null;
+        let mediaType = 'text';
+        if (file) {
+          const up = await uploadAPI.media(file);
+          mediaUrl = up.data.data.url;
+          mediaType = up.data.data.mediaType;
+        }
         await postAPI.create({ content: content.trim(), mediaUrl, mediaType, isCreatorAd: true });
       }
       reset();
@@ -108,8 +127,8 @@ export default function CreatorAdsPage({ user, onBack }) {
         {(preview || file) ? <div className="mt-3 rounded-xl overflow-hidden bg-black relative">
           {(file?.type?.startsWith('video/') || editing?.mediaType === 'video') ? <video src={preview} controls className="w-full max-h-80 object-contain" /> : <img src={preview} alt="Ad preview" className="w-full max-h-80 object-contain" />}
           <button onClick={() => { setFile(null); if (preview && preview !== editing?.mediaUrl) URL.revokeObjectURL(preview); setPreview(''); setUploadName(''); setDirty(true); }} className="absolute top-2 right-2 bg-black/70 text-white p-2 rounded-full"><X className="w-4 h-4" /></button>
-        </div> : <button onClick={() => inputRef.current?.click()} className="mt-3 w-full border-2 border-dashed border-purple-200 bg-purple-50 rounded-xl py-8 flex flex-col items-center gap-2 text-purple-700"><Upload className="w-8 h-8" /><b>Upload photo or video</b><span className="text-xs text-purple-500">Maximum 50 MB</span></button>}
-        <input ref={inputRef} type="file" accept="image/*,video/*" onChange={chooseFile} className="hidden" />
+        </div> : <button onClick={() => inputRef.current?.click()} className="mt-3 w-full border-2 border-dashed border-purple-200 bg-purple-50 rounded-xl py-8 flex flex-col items-center gap-2 text-purple-700"><Upload className="w-8 h-8" /><b>Upload photo or video</b><span className="text-xs text-purple-500">Select one or multiple photos/videos · Maximum 50 MB each</span></button>}
+        <input ref={inputRef} type="file" accept="image/*,video/*" multiple={!editing?.id} onChange={chooseFile} className="hidden" />
         <div className="mt-2 flex items-center justify-between text-xs text-gray-400"><span>{content.length}/{MAX_TEXT}</span>{uploadName && <span className="truncate max-w-[65%]">{uploadName}</span>}</div>
         <div className="mt-4 flex gap-2"><button onClick={() => inputRef.current?.click()} className="flex-1 py-3 rounded-xl border font-semibold flex items-center justify-center gap-2"><Upload className="w-4 h-4" /> {preview ? 'Replace media' : 'Add media'}</button><button onClick={save} disabled={saving} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" /> {saving ? 'Saving...' : editing?.id ? 'Save Changes' : 'Publish Ad'}</button></div>
       </section>}
