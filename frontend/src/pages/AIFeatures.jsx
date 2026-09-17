@@ -327,7 +327,7 @@ function AIFeatures() {
       const response = await aiAPI.video({ request, task: videoTask, duration: videoDuration, conversationId });
       const data = response.data?.data || {};
       setConversationId(data.conversationId || conversationId);
-      setMessages((prev) => [...prev, { id: data.messageId || `video-ai-${Date.now()}`, role: 'assistant', content: data.response || 'Video plan completed.', model: data.model, videoAI: true }]);
+      setMessages((prev) => [...prev, { id: data.messageId || `video-ai-${Date.now()}`, role: 'assistant', content: data.response || data.message || data.text || 'Video AI completed. Try another request if you need a different plan.', model: data.model, videoAI: true }]);
       setVideoMode(false);
       await loadHistory();
     } catch (error) { setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.response?.data?.message || 'Video AI failed. Please try again.' }]); }
@@ -568,31 +568,26 @@ function AIFeatures() {
 
         {/* Chat */}
         <main className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 bg-white/90 backdrop-blur border-b flex items-center px-4 gap-3 sticky top-0 z-10">
-            <button className="p-2 rounded-full hover:bg-gray-100" onClick={() => setSidebarOpen((v) => !v)} title="AI history" aria-label="AI history"><Menu size={21} /></button>
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center"><Bot size={20} /></div>
-            <div className="flex-1 min-w-0"><div className="font-semibold text-gray-900">RA Social AI</div><div className="text-[11px] text-green-600">Groq AI • Auto mode</div></div>
-            <div className="hidden sm:flex items-center gap-1 rounded-full bg-gray-100 p-1">
-              <button onClick={selectTextWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'text' ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>Text AI</button>
-              <button onClick={selectVideoWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'video' ? 'bg-white shadow text-sky-700' : 'text-gray-500'}`}>Video AI</button>
+          <header className="bg-white/90 backdrop-blur border-b sticky top-0 z-10 px-3 sm:px-4 py-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button className="p-2 rounded-full hover:bg-gray-100 shrink-0" onClick={() => setSidebarOpen((v) => !v)} title="AI history" aria-label="AI history"><Menu size={21} /></button>
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shrink-0"><Bot size={20} /></div>
+              <div className="min-w-0 flex-1"><div className="font-semibold text-gray-900 truncate">RA Social AI</div></div>
+              <button onClick={newChat} title="New chat" className="p-2 rounded-full border hover:bg-gray-50 shrink-0"><Plus size={17} /></button>
             </div>
-            <button onClick={() => toggleMode('research')} title="Deep research" className={`p-2 rounded-full border ${researchMode ? 'bg-purple-50 border-purple-300 text-purple-700' : 'hover:bg-gray-50'}`}><Search size={17} /></button>
-            <button onClick={() => toggleMode('coding')} title="Coding" className={`p-2 rounded-full border ${codingMode ? 'bg-blue-50 border-blue-300 text-blue-700' : 'hover:bg-gray-50'}`}><Code2 size={17} /></button>
-            <button onClick={() => toggleMode('data')} title="Data & Reasoning" className={`p-2 rounded-full border ${dataMode ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'hover:bg-gray-50'}`}><BarChart3 size={17} /></button>
-            <button onClick={() => toggleMode('writing')} title="Writing" className={`p-2 rounded-full border ${writingMode ? 'bg-pink-50 border-pink-300 text-pink-700' : 'hover:bg-gray-50'}`}><PenSquare size={17} /></button>
-            <button onClick={() => toggleMode('social')} title="Social & Reels" className={`p-2 rounded-full border ${socialMode ? 'bg-orange-50 border-orange-300 text-orange-700' : 'hover:bg-gray-50'}`}><Share2 size={17} /></button>
-            <button onClick={() => toggleMode('creative')} title="Creative" className={`p-2 rounded-full border ${creativeMode ? 'bg-fuchsia-50 border-fuchsia-300 text-fuchsia-700' : 'hover:bg-gray-50'}`}><Palette size={17} /></button>
-            <button onClick={() => toggleMode('video')} title="Video" className={`p-2 rounded-full border ${videoMode ? 'bg-cyan-50 border-cyan-300 text-cyan-700' : 'hover:bg-gray-50'}`}><Video size={17} /></button>
-            <button onClick={() => toggleMode('image')} title="Generate Image" className={`p-2 rounded-full border ${mediaGenerateMode === 'image' ? 'bg-rose-50 border-rose-300 text-rose-700' : 'hover:bg-gray-50'}`}><ImageIcon size={17} /></button>
-                <button onClick={() => startImageEdit()} title="Edit an image" className={`p-2 rounded-full border ${mediaGenerateMode === 'edit-image' ? 'bg-violet-50 border-violet-300 text-violet-700' : 'hover:bg-gray-50'}`}><Wand2 size={17} /></button>
-            <button onClick={() => toggleMode('mediaVideo')} title="Generate Video" className={`p-2 rounded-full border ${mediaGenerateMode === 'video' ? 'bg-sky-50 border-sky-300 text-sky-700' : 'hover:bg-gray-50'}`}><Wand2 size={17} /></button>
-            <button onClick={() => toggleMode('memory')} title="Memory" className={`p-2 rounded-full border ${memoryMode ? 'bg-violet-50 border-violet-300 text-violet-700' : 'hover:bg-gray-50'}`}><Brain size={17} /></button>
-            <button onClick={exportChat} disabled={!messages.length} className="p-2 rounded-full border hover:bg-gray-50 disabled:opacity-40" title="Export chat"><Download size={17} /></button>
-            <button onClick={saveWorkspace} className="p-2 rounded-full border hover:bg-gray-50" title="Save workspace"><FolderOpen size={17} /></button>
-            <button onClick={() => setSettingsOpen((v) => !v)} className={`p-2 rounded-full border hover:bg-gray-50 ${settingsOpen ? 'bg-gray-100' : ''}`} title="AI settings"><Settings size={17} /></button>
-            <button onClick={newChat} title="New chat" className="p-2 rounded-full border hover:bg-gray-50"><Plus size={17} /></button>
+            <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="flex items-center gap-1 rounded-full bg-gray-100 p-1 shrink-0">
+                <button onClick={selectTextWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'text' ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>Text AI</button>
+                <button onClick={selectVideoWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'video' ? 'bg-white shadow text-sky-700' : 'text-gray-500'}`}>Video AI</button>
+              </div>
+              {[['research', Search, researchMode, 'Deep research'], ['coding', Code2, codingMode, 'Coding'], ['data', BarChart3, dataMode, 'Data'], ['writing', PenSquare, writingMode, 'Writing'], ['social', Share2, socialMode, 'Social'], ['creative', Palette, creativeMode, 'Creative'], ['video', Video, videoMode, 'Video'], ['image', ImageIcon, mediaGenerateMode === 'image', 'Generate image'], ['edit', Wand2, mediaGenerateMode === 'edit-image', 'Edit image'], ['mediaVideo', Wand2, mediaGenerateMode === 'video', 'Generate video'], ['memory', Brain, memoryMode, 'Memory']].map(([mode, Icon, active, title]) => (
+                <button key={mode} onClick={() => mode === 'edit' ? startImageEdit() : toggleMode(mode)} title={title} aria-label={title} className={`p-2 rounded-full border shrink-0 ${active ? 'bg-purple-50 border-purple-300 text-purple-700' : 'hover:bg-gray-50'}`}><Icon size={17} /></button>
+              ))}
+              <button onClick={exportChat} disabled={!messages.length} className="p-2 rounded-full border hover:bg-gray-50 disabled:opacity-40 shrink-0" title="Export chat"><Download size={17} /></button>
+              <button onClick={saveWorkspace} className="p-2 rounded-full border hover:bg-gray-50 shrink-0" title="Save workspace"><FolderOpen size={17} /></button>
+              <button onClick={() => setSettingsOpen((v) => !v)} className={`p-2 rounded-full border hover:bg-gray-50 shrink-0 ${settingsOpen ? 'bg-gray-100' : ''}`} title="AI settings"><Settings size={17} /></button>
+            </div>
           </header>
-
           {settingsOpen && (
             <div className="border-b bg-white px-4 py-3 shadow-sm">
               <div className="max-w-3xl mx-auto flex flex-wrap items-center gap-3 text-xs">
@@ -606,19 +601,14 @@ function AIFeatures() {
             </div>
           )}
 
-          <div className="sm:hidden flex items-center gap-2 px-4 py-2 bg-white border-b">
-            <button onClick={selectTextWorkspace} className={`flex-1 py-2 rounded-full text-sm font-semibold ${aiWorkspace === 'text' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>Text AI</button>
-            <button onClick={selectVideoWorkspace} className={`flex-1 py-2 rounded-full text-sm font-semibold ${aiWorkspace === 'video' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}>Video AI</button>
-          </div>
-
-          <section className={`flex-1 overflow-y-auto px-4 py-6 ${compactMode ? 'py-3' : ''}`}>
+          <section className={`flex-1 min-h-0 overflow-y-auto px-4 py-6 ${compactMode ? 'py-3' : ''}`}>
             {messages.length === 0 ? (
               <div className="max-w-2xl mx-auto text-center pt-12 md:pt-20">
                 <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shadow-lg"><Sparkles size={30} /></div>
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mt-5">{aiWorkspace === 'video' ? 'What video can I create?' : 'What can I help you with?'}</h1>
-                <p className="text-gray-500 mt-2">{aiWorkspace === 'video' ? 'Describe your video and generate it with AI, or use Video AI for storyboards and editing plans.' : 'Ask anything. RA Social AI can automatically use web research, website reading, code tools, and image understanding when needed.'}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8 text-left">
-                  {['Analyze this photo', 'Extract text from this image', 'Explain this chart', 'Deep research a topic', 'Calculate / analyze data', 'Write a social post', 'Create a reel script', 'Generate hashtags', 'Create a visual concept', 'Plan a video storyboard', 'Transcribe my voice'].map((text) => (
+                <p className="text-gray-500 mt-2 text-sm">{aiWorkspace === 'video' ? 'Describe your video idea.' : 'Ask anything.'}</p>
+                <div className="grid grid-cols-2 gap-2 mt-6 text-left">
+                  {['Analyze this photo', 'Deep research a topic', 'Calculate / analyze data', 'Plan a video storyboard'].map((text) => (
                     <button key={text} onClick={() => { setInputText(text); if (text.startsWith('Deep research')) setResearchMode(true); if (text.startsWith('Calculate')) setDataMode(true); if (text.startsWith('Write a')) setWritingMode(true); if (text.startsWith('Create a reel')) setSocialMode(true); if (text.startsWith('Create a visual')) setCreativeMode(true); if (text.startsWith('Plan a video')) setVideoMode(true); if (text.startsWith('Transcribe')) audioInputRef.current?.click(); }} className="p-4 rounded-xl bg-white border hover:border-purple-300 hover:shadow-sm text-sm text-gray-700">{text}</button>
                   ))}
                 </div>
@@ -666,7 +656,7 @@ function AIFeatures() {
             )}
           </section>
 
-          <div className="bg-white border-t px-3 md:px-6 py-3">
+          <div className="shrink-0 bg-white border-t px-3 md:px-6 py-3">
             <div className="max-w-3xl mx-auto">
               {attachments.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-2">

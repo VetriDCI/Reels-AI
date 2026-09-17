@@ -7,6 +7,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   const [savedDraftId, setSavedDraftId] = useState(initialDraft?.id || null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [mediaKind, setMediaKind] = useState(null);
   const [uploadStage, setUploadStage] = useState(null);
@@ -18,6 +19,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   const [imageRotation, setImageRotation] = useState(0);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
+  const multiMediaInputRef = useRef(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -58,6 +60,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
 
   const pickPhoto = () => photoInputRef.current?.click();
   const pickVideo = () => videoInputRef.current?.click();
+  const pickMultipleMedia = () => multiMediaInputRef.current?.click();
 
   const onFileChosen = (chosenFile, kind) => {
     if (!chosenFile) return;
@@ -67,6 +70,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setFiles([chosenFile]);
     setFile(chosenFile);
     setMediaKind(kind);
     setPreviewUrl(URL.createObjectURL(chosenFile));
@@ -74,9 +78,25 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     setEditOpen(false);
   };
 
+  const onMultipleFilesChosen = (event) => {
+    const selected = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!selected.length) return;
+    const valid = selected.filter(f => f.size <= 50 * 1024 * 1024 && (f.type.startsWith('image/') || f.type.startsWith('video/')));
+    if (valid.length !== selected.length) alert('Only image/video files under 50 MB are allowed.');
+    if (!valid.length) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setFiles(valid);
+    setFile(valid[0]);
+    setMediaKind(valid[0].type.startsWith('video/') ? 'video' : 'photo');
+    setPreviewUrl(URL.createObjectURL(valid[0]));
+    setImageRotation(0);
+    setEditOpen(false);
+  };
+
   const clearMedia = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFile(null); setPreviewUrl(null); setMediaKind(null); setEditOpen(false); setImageRotation(0);
+    setFile(null); setFiles([]); setPreviewUrl(null); setMediaKind(null); setEditOpen(false); setImageRotation(0);
     if (photoInputRef.current) photoInputRef.current.value = '';
     if (videoInputRef.current) videoInputRef.current.value = '';
   };
@@ -107,7 +127,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   };
 
   const saveDraft = async () => {
-    if (!content.trim() && !file && !initialDraft?.mediaUrl) return;
+    if (!content.trim() && !files.length && !initialDraft?.mediaUrl) return;
     setDraftSaving(true);
     try {
       let mediaUrl = initialDraft?.mediaUrl || null;
@@ -125,18 +145,18 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   };
 
   const handleSubmit = async () => {
-    if (!content.trim() && !file) return;
+    const selectedFiles = files.length ? files : (file ? [file] : []);
+    if (!content.trim() && !selectedFiles.length && !initialDraft?.mediaUrl) return;
     setUploadStage('uploading');
     try {
-      let mediaUrl = initialDraft?.mediaUrl || null;
-      let mediaType = initialDraft?.mediaType || 'text';
-      if (file) {
-        const upload = await uploadAPI.media(file);
-        mediaUrl = upload.data.data.url;
-        mediaType = upload.data.data.mediaType;
-      }
+      const items = selectedFiles.length ? await Promise.all(selectedFiles.map(async (selectedFile) => {
+        const upload = await uploadAPI.media(selectedFile);
+        return { mediaUrl: upload.data.data.url, mediaType: upload.data.data.mediaType };
+      })) : [{ mediaUrl: initialDraft?.mediaUrl || null, mediaType: initialDraft?.mediaType || 'text' }];
       setUploadStage('publishing');
-      await postAPI.create({ content: content.trim(), mediaUrl, mediaType, isCreatorAd: false });
+      for (const item of items) {
+        await postAPI.create({ content: content.trim(), mediaUrl: item.mediaUrl, mediaType: item.mediaType, isCreatorAd: false });
+      }
       if (savedDraftId) { const key = `ra-social-drafts-${userId || 'guest'}`; const drafts = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify(drafts.filter(d => d.id !== savedDraftId))); }
       onPostCreated?.();
       stopCamera();
@@ -154,7 +174,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
         <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
           <button onClick={() => { stopCamera(); onClose(); }} aria-label="Close" disabled={loading}><X className="w-6 h-6 text-gray-600" /></button>
           <h2 className="font-semibold">Create Post</h2>
-          <div className="flex items-center gap-3"><button onClick={saveDraft} disabled={loading || draftSaving || (!content.trim() && !file && !initialDraft?.mediaUrl)} className="text-gray-600 text-sm font-semibold disabled:opacity-50">{draftSaving ? 'Saving…' : 'Save draft'}</button><button onClick={handleSubmit} disabled={loading || draftSaving || (!content.trim() && !file && !initialDraft?.mediaUrl)} className="text-purple-600 font-semibold disabled:opacity-50">Post</button></div>
+          <div className="flex items-center gap-3"><button onClick={saveDraft} disabled={loading || draftSaving || (!content.trim() && !files.length && !initialDraft?.mediaUrl)} className="text-gray-600 text-sm font-semibold disabled:opacity-50">{draftSaving ? 'Saving…' : 'Save draft'}</button><button onClick={handleSubmit} disabled={loading || draftSaving || (!content.trim() && !files.length && !initialDraft?.mediaUrl)} className="text-purple-600 font-semibold disabled:opacity-50">Post</button></div>
         </div>
 
         {loading && (
@@ -169,12 +189,15 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
           <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="What's on your mind?" className="w-full h-32 resize-none focus:outline-none text-gray-800" />
 
           {!previewUrl && !livePreview && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <button type="button" onClick={pickPhoto} className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-5 hover:bg-gray-50">
                 <Image className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Photo</span><span className="text-[11px] text-gray-400">From device</span>
               </button>
               <button type="button" onClick={pickVideo} className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-5 hover:bg-gray-50">
                 <Video className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Video</span><span className="text-[11px] text-gray-400">From device</span>
+              </button>
+              <button type="button" onClick={pickMultipleMedia} className="flex flex-col items-center gap-2 border-2 border-dashed border-purple-300 bg-purple-50 rounded-xl py-5 hover:bg-purple-100">
+                <Image className="w-7 h-7 text-purple-600" /><span className="text-sm font-semibold text-purple-700">Multiple</span><span className="text-[11px] text-purple-500">Images / videos</span>
               </button>
               <button type="button" onClick={startLivePreview} className="flex flex-col items-center gap-2 border-2 border-red-300 bg-red-50 rounded-xl py-5 hover:bg-red-100">
                 <Radio className="w-7 h-7 text-red-600" /><span className="text-sm font-bold text-red-600">LIVE</span><span className="text-[11px] text-red-500">Camera</span>
@@ -184,6 +207,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
 
           <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={e => onFileChosen(e.target.files?.[0] || null, 'photo')} />
           <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={e => onFileChosen(e.target.files?.[0] || null, 'video')} />
+          <input ref={multiMediaInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={onMultipleFilesChosen} />
 
           {previewUrl && (
             <div className="rounded-xl overflow-hidden border bg-gray-50">
@@ -192,14 +216,15 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
                   ? <video key={previewUrl} src={previewUrl} controls playsInline preload="metadata" className="w-full max-h-80 object-contain bg-black" />
                   : <img src={previewUrl} alt="Selected media preview" className="w-full max-h-80 object-contain bg-black" />}
                 <div className="absolute top-2 right-2 flex gap-2">
-                  <button type="button" onClick={() => setEditOpen(true)} className="p-2 bg-white/90 rounded-full text-gray-800 shadow" aria-label="Edit selected media"><Pencil className="w-4 h-4" /></button>
+                  {files.length <= 1 && <button type="button" onClick={() => setEditOpen(true)} className="p-2 bg-white/90 rounded-full text-gray-800 shadow" aria-label="Edit selected media"><Pencil className="w-4 h-4" /></button>}
                   <button type="button" onClick={clearMedia} className="p-2 bg-black/70 rounded-full text-white" aria-label="Remove media"><X className="w-4 h-4" /></button>
                 </div>
               </div>
               <div className="p-3 flex items-center justify-between">
-                <div className="min-w-0"><p className="text-sm font-semibold truncate">{file?.name}</p><p className="text-xs text-gray-500">{mediaKind === 'video' ? 'Video' : 'Image'} · {(file?.size / 1024 / 1024).toFixed(1)} MB</p></div>
-                <button type="button" onClick={mediaKind === 'video' ? pickVideo : pickPhoto} className="flex items-center gap-1 px-3 py-2 rounded-full bg-gray-100 text-sm font-medium"><RefreshCw className="w-4 h-4" />Replace</button>
+                <div className="min-w-0"><p className="text-sm font-semibold truncate">{files.length > 1 ? `${files.length} media files selected` : file?.name}</p><p className="text-xs text-gray-500">{files.length > 1 ? 'Each file will be posted separately.' : `${mediaKind === 'video' ? 'Video' : 'Image'} · ${(file?.size / 1024 / 1024).toFixed(1)} MB`}</p></div>
+                <button type="button" onClick={pickMultipleMedia} className="flex items-center gap-1 px-3 py-2 rounded-full bg-gray-100 text-sm font-medium"><RefreshCw className="w-4 h-4" />Add more</button>
               </div>
+              {files.length > 1 && <div className="px-3 pb-3 flex gap-2 overflow-x-auto">{files.map((item, index) => <div key={`${item.name}-${index}`} className="relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border bg-black">{item.type.startsWith('video/') ? <div className="w-full h-full flex items-center justify-center text-white"><Video className="w-6 h-6" /></div> : <img src={URL.createObjectURL(item)} alt="" className="w-full h-full object-cover" />}</div>)}</div>}
             </div>
           )}
 

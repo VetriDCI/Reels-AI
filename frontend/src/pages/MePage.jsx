@@ -4,7 +4,6 @@ import {
   Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard, FileText, Clock3, Megaphone
 } from 'lucide-react';
 import api, { postAPI } from '../services/api';
-import PostCard from '../components/PostCard';
 
 import ProfileOverviewPage from './settings/ProfileOverviewPage';
 import AnalyticsHubPage from './settings/AnalyticsHubPage';
@@ -50,7 +49,6 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('main');
-  const [myPosts, setMyPosts] = useState([]);
   const [creatingChannel, setCreatingChannel] = useState(false);
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
@@ -63,7 +61,6 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
     try {
       const res = await api.get('/auth/me');
       setUser(res.data.data);
-      setMyPosts(res.data.data?.posts || []);
     } catch (err) {
       console.error('Failed to load profile', err);
     } finally {
@@ -258,11 +255,6 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
           <div className="flex-1"><p className="font-bold text-gray-800">Watch History</p><p className="text-xs text-gray-500">Videos, reels & posts you viewed — last 30 days</p></div>
           <ChevronRight className="w-4 h-4 text-gray-300" />
         </button>
-
-        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">My Posts — Manage</p>
-        <div className="space-y-4 mb-5">
-          {myPosts.length === 0 ? <div className="bg-white rounded-2xl p-5 text-sm text-gray-500 shadow-sm">You have no posts yet.</div> : myPosts.map(post => <PostCard key={post.id} post={{...post, user}} profileMode onChanged={loadUser} />)}
-        </div>
 
         <p className="text-xs text-gray-400 uppercase font-semibold mb-2">{hasChannel ? 'Creator Dashboard' : 'Dashboard Management & Settings'}</p>
         <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-100 mb-4">
