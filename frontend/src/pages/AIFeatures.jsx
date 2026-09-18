@@ -536,7 +536,7 @@ function AIFeatures() {
   };
 
   return (
-    <div className="pt-16 pb-24 min-h-screen bg-gradient-to-b from-white to-purple-50/40 flex flex-col">
+    <div className="pt-16 pb-28 min-h-[100dvh] bg-gradient-to-b from-white to-purple-50/40 flex flex-col overflow-hidden">
       <div className="flex-1 flex min-h-[calc(100vh-64px)] overflow-hidden">
         {/* History */}
         <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 left-0 z-40 w-72 h-[calc(100vh-64px)] bg-white border-r border-gray-200 shadow-xl transition-transform duration-200 flex flex-col`}>
@@ -567,7 +567,7 @@ function AIFeatures() {
         {sidebarOpen && <button className="fixed inset-0 top-16 bg-black/20 z-30" onClick={() => setSidebarOpen(false)} aria-label="Close history" />}
 
         {/* Chat */}
-        <main className="flex-1 flex flex-col min-w-0 pb-4">
+        <main className="flex-1 flex flex-col min-w-0 pb-2 min-h-0">
           <header className="bg-white/90 backdrop-blur border-b sticky top-0 z-10 px-3 sm:px-4 py-2">
             <div className="flex items-center gap-2 min-w-0">
               <button className="p-2 rounded-full hover:bg-gray-100 shrink-0" onClick={() => setSidebarOpen((v) => !v)} title="AI history" aria-label="AI history"><Menu size={21} /></button>
@@ -590,7 +590,7 @@ function AIFeatures() {
             </div>
           )}
 
-          <section className={`flex-1 min-h-0 overflow-y-auto px-4 py-6 ${compactMode ? 'py-3' : ''}`}>
+          <section className={`flex-1 min-h-0 overflow-y-auto px-4 py-6 pb-4 ${compactMode ? 'py-3' : ''}`}>
             {messages.length === 0 ? (
               <div className="max-w-2xl mx-auto text-center pt-12 md:pt-20">
                 <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shadow-lg"><Sparkles size={30} /></div>

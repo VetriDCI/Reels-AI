@@ -159,9 +159,9 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   if (reels.length === 0) return <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-2 px-6 text-center"><p className="text-lg font-bold">No reels yet</p><p className="text-sm text-gray-400">Post a video from Home or Creator Ads to see it here.</p></div>;
 
   return (
-    <div ref={containerRef} onScroll={handleScroll} className="h-screen w-full bg-black overflow-y-scroll snap-y snap-mandatory">
+    <div ref={containerRef} onScroll={handleScroll} className="h-[calc(100dvh-76px)] w-full bg-black overflow-y-scroll snap-y snap-mandatory overscroll-contain">
       {reels.map((reel, i) => (
-        <div key={reel.id} ref={el => { itemRefs.current[reel.id] = el; }} className="relative h-screen w-full snap-start flex items-center justify-center bg-black">
+        <div key={reel.id} ref={el => { itemRefs.current[reel.id] = el; }} className="relative h-[calc(100dvh-76px)] w-full snap-start flex items-center justify-center bg-black">
           <video
             ref={el => { videoRefs.current[reel.id] = el; }}
             src={reel.mediaUrl}
@@ -191,7 +191,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
             </div>
           </div>
 
-          <div className="absolute right-3 bottom-32 flex flex-col items-center gap-4 text-white">
+          <div className="absolute right-3 bottom-5 flex flex-col items-center gap-3 text-white z-20">
             <div className="flex flex-col items-center gap-1"><Eye className="w-6 h-6" /><span className="text-xs">{(views[reel.id] || 0).toLocaleString()}</span></div>
             <button onClick={() => handleLike(reel.id)} className="flex flex-col items-center gap-1"><Heart className={`w-7 h-7 ${reel._liked ? 'fill-pink-500 text-pink-500' : ''}`} /><span className="text-xs">{reel.likesCount || 0}</span></button>
             <button onClick={() => openComments(reel)} className="flex flex-col items-center gap-1"><MessageCircle className="w-6 h-6" /><span className="text-xs">{reel.commentsCount || 0}</span></button>
@@ -213,7 +213,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
             </div>
           </div>
 
-          <div className="absolute left-4 right-20 bottom-24 text-white">
+          <div className="absolute left-4 right-20 bottom-5 text-white z-20 pb-1">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-xs font-bold">{(reel.user?.fullName?.[0] || reel.user?.username?.[0] || 'U').toUpperCase()}</div>
               <span className="font-semibold text-sm">{reel.user?.fullName || reel.user?.username}</span>

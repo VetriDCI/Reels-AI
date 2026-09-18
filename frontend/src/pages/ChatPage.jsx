@@ -180,7 +180,7 @@ export default function ChatPage() {
 
   return <div className="pt-16 h-[100dvh] flex overflow-hidden bg-white">
     <section className={`${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[340px] shrink-0 flex-col border-r border-gray-200 min-h-0`}>
-      <div className="p-4 border-b flex items-center justify-between shrink-0"><h2 className="text-xl font-bold">Messages</h2><button onClick={() => setNewChatOpen(true)} className="w-12 h-12 bg-purple-600 text-white rounded-full flex items-center justify-center" aria-label="New chat"><Plus className="w-6 h-6" /></button></div>
+      <div className="p-4 border-b flex items-center justify-between shrink-0"><h2 className="text-xl font-bold">Messages</h2><button onClick={() => setNewChatOpen(true)} className="w-12 h-12 shrink-0 bg-purple-600 text-white rounded-full flex items-center justify-center" aria-label="New chat"><Plus className="w-6 h-6" /></button></div>
       <div className="border-b bg-white px-3 py-3 shrink-0"><div className="flex items-start gap-2">
         <div className="flex-1 min-w-0 overflow-x-auto pb-1"><div className="flex items-start gap-3 w-max">
           {storyGroups.map(group => {
@@ -190,7 +190,7 @@ export default function ChatPage() {
           })}
           {!storyGroups.length && <div className="w-16 text-center text-xs text-gray-400 py-4">No Vibes</div>}
         </div></div>
-        <button onClick={() => { setVibeFiles([]); setVibeCaption(''); setVibeComposerOpen(true); }} className="shrink-0 w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-sm" aria-label="Add Vibe"><Plus className="w-6 h-6" /></button>
+        <button onClick={() => { setVibeFiles([]); setVibeCaption(''); setVibeComposerOpen(true); }} className="shrink-0 w-12 h-12 min-w-12 min-h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-sm" aria-label="Add Vibe"><Plus className="w-6 h-6" /></button>
       </div><div className="mt-1 flex items-center gap-1 text-[11px] text-gray-400"><Clock3 className="w-3 h-3" /> Vibes disappear automatically after 24 hours</div></div>
       <div className="flex-1 min-h-0 overflow-y-auto">{loading ? <div className="text-center py-20 text-gray-400">Loading chats...</div> : chats.length ? chats.map(c => { const o = other(c); return <button key={c.id} onClick={() => setSelectedChat(c)} className={`w-full flex items-center gap-3 p-4 text-left hover:bg-gray-50 ${selectedChat?.id === c.id ? 'bg-purple-50' : ''}`}><div className="relative shrink-0"><img src={o?.avatarUrl || `https://i.pravatar.cc/150?u=${o?.id}`} className="w-12 h-12 rounded-full object-cover" alt="" />{onlineUserIds.includes(o?.id) && <span className="absolute right-0 bottom-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />}</div><div className="min-w-0"><h3 className="font-semibold truncate">{o?.fullName || o?.username}</h3><p className="text-sm text-gray-500 truncate">{c.messages?.[0]?.content || 'Start chatting'}</p></div></button>; }) : <div className="p-8 text-center text-sm text-gray-400">No chats yet. Tap + to start a conversation.</div>}</div>
     </section>

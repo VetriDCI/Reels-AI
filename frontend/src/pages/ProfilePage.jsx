@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { authAPI } from '../services/api';
+import { authAPI, uploadAPI } from '../services/api';
 import { Camera, Edit2, X } from 'lucide-react';
 
 function ProfilePage() {
@@ -9,6 +9,8 @@ function ProfilePage() {
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [loading, setLoading] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = React.useRef(null);
 
   const handleSave = async () => {
     setLoading(true);
@@ -21,6 +23,28 @@ function ProfilePage() {
       alert('Failed to update profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Please select an image file'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Profile image must be under 10 MB'); return; }
+    setUploadingAvatar(true);
+    try {
+      const upload = await uploadAPI.media(file);
+      const avatarUrl = upload.data?.data?.url;
+      if (!avatarUrl) throw new Error('Upload did not return an image URL');
+      const response = await authAPI.updateProfile({ avatarUrl });
+      updateUser(response.data.data);
+    } catch (error) {
+      console.error('Failed to change profile image:', error);
+      alert(error.response?.data?.message || 'Failed to change profile image');
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -40,9 +64,10 @@ function ProfilePage() {
               alt="Profile"
               className="w-24 h-24 rounded-full object-cover"
             />
-            <button className="absolute bottom-0 right-0 bg-purple-600 text-white p-2 rounded-full hover:bg-purple-700">
+            <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={uploadingAvatar} aria-label="Change profile photo" className="absolute bottom-0 right-0 bg-purple-600 text-white p-2 rounded-full hover:bg-purple-700 disabled:opacity-60">
               <Camera className="w-4 h-4" />
             </button>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
 
           {isEditing ? (
