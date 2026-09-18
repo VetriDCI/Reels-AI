@@ -50,14 +50,26 @@ export default function ChatPage() {
   const [galleryFile, setGalleryFile] = useState(null), [galleryFiles, setGalleryFiles] = useState([]), [messageMenu, setMessageMenu] = useState(null), [replyingTo, setReplyingTo] = useState(null), [forwardingMessage, setForwardingMessage] = useState(null), [deletingMessage, setDeletingMessage] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState([]), [typingUserId, setTypingUserId] = useState(null);
   const [safetyOpen, setSafetyOpen] = useState(false), [safety, setSafety] = useState({ blocked: false, muted: false, restricted: false });
-  const [vibes, setVibes] = useState([]), [vibeComposerOpen, setVibeComposerOpen] = useState(false), [vibeFile, setVibeFile] = useState(null), [vibeCaption, setVibeCaption] = useState(''), [vibeUploading, setVibeUploading] = useState(false), [vibeViewerIndex, setVibeViewerIndex] = useState(null);
+  const [vibes, setVibes] = useState([]), [vibeComposerOpen, setVibeComposerOpen] = useState(false), [vibeFiles, setVibeFiles] = useState([]), [vibeCaption, setVibeCaption] = useState(''), [vibeUploading, setVibeUploading] = useState(false), [vibeViewerIndex, setVibeViewerIndex] = useState(null);
   const sendingRef = useRef(false), socketRef = useRef(null), selectedChatRef = useRef(null), endRef = useRef(null), galleryRef = useRef(null), vibeRef = useRef(null), typingTimerRef = useRef(null);
 
   const other = (chat) => chat?.participants?.find(p => p.id !== user?.id) || chat?.participants?.[0];
   const otherUser = selectedChat ? other(selectedChat) : null;
   const otherOnline = !!otherUser && onlineUserIds.includes(otherUser.id);
-  const ownVibe = useMemo(() => vibes.find(v => v.userId === user?.id), [vibes, user?.id]);
-  const otherVibes = useMemo(() => vibes.filter(v => v.userId !== user?.id), [vibes, user?.id]);
+  const ownVibes = useMemo(() => vibes.filter(v => v.userId === user?.id), [vibes, user?.id]);
+  const otherVibeGroups = useMemo(() => {
+    const groups = new Map();
+    vibes.filter(v => v.userId !== user?.id).forEach(v => {
+      if (!groups.has(v.userId)) groups.set(v.userId, []);
+      groups.get(v.userId).push(v);
+    });
+    return Array.from(groups.values());
+  }, [vibes, user?.id]);
+  const ownVibe = ownVibes[0] || null;
+  const storyGroups = useMemo(() => [
+    ...(ownVibes.length ? [{ userId: user?.id, items: ownVibes, own: true }] : []),
+    ...otherVibeGroups.map(items => ({ userId: items[0]?.userId, items, own: false }))
+  ], [ownVibes, otherVibeGroups, user?.id]);
 
   useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
   useEffect(() => {
@@ -146,19 +158,39 @@ export default function ChatPage() {
   const inviteViaWhatsApp = () => { const digits = inviteNumber.replace(/\D/g, ''); if (!digits) return alert('Enter a mobile number'); window.open(`https://wa.me/${digits}?text=${encodeURIComponent(`Join me on RA Social! ${window.location.origin}`)}`, '_blank', 'noopener,noreferrer'); };
   const galleryChanged = e => { const selected = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/')); e.target.value = ''; if (!selected.length) return; setGalleryFiles(prev => [...prev, ...selected].slice(0, 10)); setGalleryFile(selected[0]); };
   const appendEmoji = e => setNewMessage(v => v + e);
-  const publishVibe = async () => { if (!vibeFile || vibeUploading) return; setVibeUploading(true); try { const data = await uploadAttachment(vibeFile); const mediaType = vibeFile.type.startsWith('video/') ? 'video' : 'image'; const r = await vibeAPI.create({ mediaUrl: data, mediaType, caption: vibeCaption }); setVibes(prev => [r.data.data, ...prev.filter(v => v.userId !== user?.id)]); setVibeComposerOpen(false); setVibeFile(null); setVibeCaption(''); } catch (e) { alert(e.response?.data?.message || 'Failed to post Vibe'); } finally { setVibeUploading(false); } };
+  const publishVibe = async () => {
+    if (!vibeFiles.length || vibeUploading) return;
+    setVibeUploading(true);
+    try {
+      const created = [];
+      for (const file of vibeFiles) {
+        const data = await uploadAttachment(file);
+        const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+        const r = await vibeAPI.create({ mediaUrl: data, mediaType, caption: vibeCaption });
+        created.push(r.data.data);
+      }
+      setVibes(prev => [...created, ...prev]);
+      setVibeComposerOpen(false);
+      setVibeFiles([]);
+      setVibeCaption('');
+    } catch (e) { alert(e.response?.data?.message || 'Failed to post Vibe'); }
+    finally { setVibeUploading(false); }
+  };
   const deleteVibe = async id => { try { await vibeAPI.delete(id); setVibes(prev => prev.filter(v => v.id !== id)); setVibeViewerIndex(null); } catch (e) { alert(e.response?.data?.message || 'Failed to delete Vibe'); } };
 
   return <div className="pt-16 h-[100dvh] flex overflow-hidden bg-white">
     <section className={`${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[340px] shrink-0 flex-col border-r border-gray-200 min-h-0`}>
-      <div className="p-4 border-b flex items-center justify-between shrink-0"><h2 className="text-xl font-bold">Messages</h2><button onClick={() => setNewChatOpen(true)} className="p-2 bg-purple-600 text-white rounded-full"><Plus className="w-5 h-5" /></button></div>
+      <div className="p-4 border-b flex items-center justify-between shrink-0"><h2 className="text-xl font-bold">Messages</h2><button onClick={() => setNewChatOpen(true)} className="w-12 h-12 bg-purple-600 text-white rounded-full flex items-center justify-center" aria-label="New chat"><Plus className="w-6 h-6" /></button></div>
       <div className="border-b bg-white px-3 py-3 shrink-0"><div className="flex items-start gap-2">
         <div className="flex-1 min-w-0 overflow-x-auto pb-1"><div className="flex items-start gap-3 w-max">
-          {ownVibe && <button onClick={() => setVibeViewerIndex(vibes.findIndex(x => x.id === ownVibe.id))} className="shrink-0 w-16 text-center"><div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400"><img src={ownVibe.mediaUrl} alt="Your Vibe" className="w-full h-full rounded-full object-cover border-2 border-white" /></div><span className="block text-xs font-semibold mt-1 truncate">Your Vibe</span></button>}
-          {otherVibes.map(v => <button key={v.id} onClick={() => setVibeViewerIndex(vibes.findIndex(x => x.id === v.id))} className="shrink-0 w-16 text-center"><div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-br from-orange-400 via-pink-500 to-purple-600"><img src={v.mediaUrl} alt="" className="w-full h-full rounded-full object-cover border-2 border-white" /></div><span className="block text-xs mt-1 truncate">{v.user?.fullName || v.user?.username}</span></button>)}
-          {!ownVibe && !otherVibes.length && <div className="w-16 text-center text-xs text-gray-400 py-4">No Vibes</div>}
+          {storyGroups.map(group => {
+            const first = group.items[0];
+            const idx = vibes.findIndex(x => x.id === first?.id);
+            return <button key={group.userId} onClick={() => idx >= 0 && setVibeViewerIndex(idx)} className="shrink-0 w-16 text-center"><div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-br from-orange-400 via-pink-500 to-purple-600"><img src={first?.mediaUrl} alt={group.own ? 'Your Vibe' : (first?.user?.fullName || first?.user?.username || 'Vibe')} className="w-full h-full rounded-full object-cover border-2 border-white" /></div><span className="block text-xs font-semibold mt-1 truncate">{group.own ? 'Your Vibe' : (first?.user?.fullName || first?.user?.username)}</span></button>;
+          })}
+          {!storyGroups.length && <div className="w-16 text-center text-xs text-gray-400 py-4">No Vibes</div>}
         </div></div>
-        <button onClick={() => { setVibeFile(null); setVibeCaption(''); setVibeComposerOpen(true); }} className="shrink-0 w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-sm" aria-label="Add Vibe"><Plus className="w-6 h-6" /></button>
+        <button onClick={() => { setVibeFiles([]); setVibeCaption(''); setVibeComposerOpen(true); }} className="shrink-0 w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-sm" aria-label="Add Vibe"><Plus className="w-6 h-6" /></button>
       </div><div className="mt-1 flex items-center gap-1 text-[11px] text-gray-400"><Clock3 className="w-3 h-3" /> Vibes disappear automatically after 24 hours</div></div>
       <div className="flex-1 min-h-0 overflow-y-auto">{loading ? <div className="text-center py-20 text-gray-400">Loading chats...</div> : chats.length ? chats.map(c => { const o = other(c); return <button key={c.id} onClick={() => setSelectedChat(c)} className={`w-full flex items-center gap-3 p-4 text-left hover:bg-gray-50 ${selectedChat?.id === c.id ? 'bg-purple-50' : ''}`}><div className="relative shrink-0"><img src={o?.avatarUrl || `https://i.pravatar.cc/150?u=${o?.id}`} className="w-12 h-12 rounded-full object-cover" alt="" />{onlineUserIds.includes(o?.id) && <span className="absolute right-0 bottom-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />}</div><div className="min-w-0"><h3 className="font-semibold truncate">{o?.fullName || o?.username}</h3><p className="text-sm text-gray-500 truncate">{c.messages?.[0]?.content || 'Start chatting'}</p></div></button>; }) : <div className="p-8 text-center text-sm text-gray-400">No chats yet. Tap + to start a conversation.</div>}</div>
     </section>
@@ -174,7 +206,7 @@ export default function ChatPage() {
     </section>
     {newChatOpen && <div className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center"><div className="bg-white w-full sm:max-w-md max-h-[90dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"><div className="p-4 border-b flex justify-between"><b>New chat</b><button onClick={() => setNewChatOpen(false)}><X /></button></div><div className="p-4 space-y-4"><div className="flex gap-2"><input value={phoneQuery} onChange={e => setPhoneQuery(e.target.value)} placeholder="Mobile number (+91...)" inputMode="tel" className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm" /><button onClick={searchByPhone} disabled={phoneSearching} className="px-4 rounded-full bg-green-500 text-white text-sm">{phoneSearching ? '...' : 'Chat'}</button></div><div className="border-t pt-4"><input value={inviteNumber} onChange={e => setInviteNumber(e.target.value)} placeholder="Number to invite" className="w-full bg-gray-100 rounded-full px-4 py-2 text-sm mb-2" /><button onClick={inviteViaWhatsApp} className="w-full py-2 bg-green-500 text-white rounded-full text-sm font-semibold">Invite via WhatsApp</button></div></div></div></div>}
     {forwardingMessage && <div className="fixed inset-0 z-[110] bg-black/50 flex items-end sm:items-center justify-center"><div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[80dvh] overflow-y-auto"><div className="p-4 border-b flex justify-between"><b>Forward message</b><button onClick={() => setForwardingMessage(null)}><X /></button></div><div className="p-2">{chats.filter(c => c.id !== selectedChat?.id).map(c => <button key={c.id} onClick={() => forwardTo(c)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50"><img src={other(c)?.avatarUrl || `https://i.pravatar.cc/80?u=${other(c)?.id}`} className="w-10 h-10 rounded-full" alt="" /><span>{other(c)?.fullName || other(c)?.username}</span></button>)}</div></div></div>}
-    {vibeComposerOpen && <div className="fixed inset-0 z-[130] bg-black/50 flex items-end sm:items-center justify-center p-4"><div className="bg-white w-full sm:max-w-md rounded-3xl overflow-hidden"><div className="p-4 border-b flex justify-between"><div><b>Post Vibe</b><p className="text-xs text-gray-500">Photo or video · 24 hours</p></div><button onClick={() => setVibeComposerOpen(false)}><X /></button></div><div className="p-4 space-y-4">{vibeFile ? (vibeFile.type.startsWith('video/') ? <video src={URL.createObjectURL(vibeFile)} controls className="max-h-[55vh] max-w-full mx-auto" /> : <img src={URL.createObjectURL(vibeFile)} alt="Preview" className="max-h-[55vh] max-w-full mx-auto object-contain" />) : <button onClick={() => vibeRef.current?.click()} className="w-full h-52 rounded-2xl border-2 border-dashed border-purple-200 bg-purple-50 flex flex-col items-center justify-center gap-2 text-purple-700"><ImagePlus className="w-10 h-10" /><b>Add photo or video</b></button>}<input ref={vibeRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVibeFile(f); e.target.value = ''; }} /><input value={vibeCaption} onChange={e => setVibeCaption(e.target.value)} maxLength={300} placeholder="Add a caption (optional)" className="w-full px-4 py-3 rounded-xl bg-gray-100" /><div className="flex gap-2"><button onClick={() => vibeRef.current?.click()} className="flex-1 py-3 rounded-xl border font-semibold">Choose media</button><button onClick={publishVibe} disabled={!vibeFile || vibeUploading} className="flex-1 py-3 rounded-xl bg-purple-600 text-white font-semibold disabled:opacity-50">{vibeUploading ? 'Posting...' : 'Post Vibe'}</button></div></div></div></div>}
+    {vibeComposerOpen && <div className="fixed inset-0 z-[130] bg-black/50 flex items-end sm:items-center justify-center p-4"><div className="bg-white w-full sm:max-w-md rounded-3xl overflow-hidden max-h-[90dvh] flex flex-col"><div className="p-4 border-b flex justify-between"><div><b>Post Vibe</b><p className="text-xs text-gray-500">Photos and videos · 24 hours</p></div><button onClick={() => setVibeComposerOpen(false)}><X /></button></div><div className="p-4 space-y-4 overflow-y-auto">{vibeFiles.length ? <div className="grid grid-cols-3 gap-2">{vibeFiles.map((f, i) => <div key={`${f.name}-${i}`} className="relative aspect-square rounded-xl overflow-hidden bg-black">{f.type.startsWith('video/') ? <video src={URL.createObjectURL(f)} className="w-full h-full object-cover" muted /> : <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />}<button onClick={() => setVibeFiles(prev => prev.filter((_, n) => n !== i))} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center"><X className="w-4 h-4" /></button></div>)}</div> : <div className="w-full h-40 rounded-2xl border-2 border-dashed border-purple-200 bg-purple-50 flex flex-col items-center justify-center gap-2 text-purple-700"><ImagePlus className="w-10 h-10" /><b>Add photos or videos</b></div>}<input ref={vibeRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => { const selected = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/')); if (selected.length) setVibeFiles(prev => [...prev, ...selected].slice(0, 20)); e.target.value = ''; }} /><input value={vibeCaption} onChange={e => setVibeCaption(e.target.value)} maxLength={300} placeholder="Add a caption (optional)" className="w-full px-4 py-3 rounded-xl bg-gray-100" /><div className="flex gap-2"><button onClick={() => vibeRef.current?.click()} className="flex-1 py-3 rounded-xl border font-semibold">{vibeFiles.length ? 'Add more' : 'Choose media'}</button><button onClick={publishVibe} disabled={!vibeFiles.length || vibeUploading} className="flex-1 py-3 rounded-xl bg-purple-600 text-white font-semibold disabled:opacity-50">{vibeUploading ? 'Posting...' : `Post ${vibeFiles.length || ''} Vibe${vibeFiles.length === 1 ? '' : 's'}`}</button></div></div></div></div>}
     {vibeViewerIndex !== null && <VibeViewer vibes={vibes} index={vibeViewerIndex} userId={user?.id} onClose={() => setVibeViewerIndex(null)} onDelete={deleteVibe} />}
   </div>;
 }

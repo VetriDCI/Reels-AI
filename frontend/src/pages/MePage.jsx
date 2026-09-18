@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Calendar, Briefcase, Wallet, Folder, Shield, Eye, Bell, Bookmark, Flag,
-  Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard, FileText, Clock3, Megaphone
+  Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard, FileText, Clock3, Megaphone, Camera
 } from 'lucide-react';
-import api, { postAPI } from '../services/api';
+import api, { postAPI, uploadAPI } from '../services/api';
 
 import ProfileOverviewPage from './settings/ProfileOverviewPage';
 import AnalyticsHubPage from './settings/AnalyticsHubPage';
@@ -52,6 +52,8 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
   const [creatingChannel, setCreatingChannel] = useState(false);
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = React.useRef(null);
 
   useEffect(() => {
     loadUser();
@@ -70,6 +72,25 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
 
   const back = () => setView('main');
   const hasChannel = Boolean(user?.channelNumber);
+
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Please select an image file'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Profile image must be under 10 MB'); return; }
+    setUploadingAvatar(true);
+    try {
+      const upload = await uploadAPI.media(file);
+      const avatarUrl = upload.data.data.url;
+      await api.put('/auth/profile', { avatarUrl });
+      await loadUser();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to change profile image');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleCreateChannel = async () => {
     setCreatingChannel(true);
@@ -131,13 +152,20 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
           </button>
         )}
         <div className="flex flex-col items-center">
-          <div className="w-20 h-20 rounded-full bg-white/20 border-4 border-white flex items-center justify-center text-2xl font-bold mb-2 overflow-hidden">
-            {user?.avatarUrl ? (
-              <img src={user.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-              (user?.fullName?.[0] || user?.username?.[0] || 'U').toUpperCase()
-            )}
+          <div className="relative mb-2">
+            <div className="w-20 h-20 rounded-full bg-white/20 border-4 border-white flex items-center justify-center text-2xl font-bold overflow-hidden">
+              {user?.avatarUrl ? (
+                <img src={user.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                (user?.fullName?.[0] || user?.username?.[0] || 'U').toUpperCase()
+              )}
+            </div>
+            <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={uploadingAvatar} aria-label="Change profile photo" className="absolute -right-1 -bottom-1 w-9 h-9 rounded-full bg-white text-purple-600 border-2 border-white shadow-md flex items-center justify-center disabled:opacity-60">
+              <Camera className="w-4 h-4" />
+            </button>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
+          {uploadingAvatar && <p className="text-xs opacity-80 mb-1">Uploading photo…</p>}
           <p className="font-bold text-lg">{user?.fullName || user?.username}</p>
           <p className="text-sm opacity-80">@{user?.username} · {hasChannel ? 'Creator' : 'User'}</p>
         </div>

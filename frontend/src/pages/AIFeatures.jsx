@@ -536,7 +536,7 @@ function AIFeatures() {
   };
 
   return (
-    <div className="pt-16 min-h-screen bg-gradient-to-b from-white to-purple-50/40 flex flex-col">
+    <div className="pt-16 pb-24 min-h-screen bg-gradient-to-b from-white to-purple-50/40 flex flex-col">
       <div className="flex-1 flex min-h-[calc(100vh-64px)] overflow-hidden">
         {/* History */}
         <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed top-16 left-0 z-40 w-72 h-[calc(100vh-64px)] bg-white border-r border-gray-200 shadow-xl transition-transform duration-200 flex flex-col`}>
@@ -567,7 +567,7 @@ function AIFeatures() {
         {sidebarOpen && <button className="fixed inset-0 top-16 bg-black/20 z-30" onClick={() => setSidebarOpen(false)} aria-label="Close history" />}
 
         {/* Chat */}
-        <main className="flex-1 flex flex-col min-w-0">
+        <main className="flex-1 flex flex-col min-w-0 pb-4">
           <header className="bg-white/90 backdrop-blur border-b sticky top-0 z-10 px-3 sm:px-4 py-2">
             <div className="flex items-center gap-2 min-w-0">
               <button className="p-2 rounded-full hover:bg-gray-100 shrink-0" onClick={() => setSidebarOpen((v) => !v)} title="AI history" aria-label="AI history"><Menu size={21} /></button>
@@ -575,18 +575,7 @@ function AIFeatures() {
               <div className="min-w-0 flex-1"><div className="font-semibold text-gray-900 truncate">RA Social AI</div></div>
               <button onClick={newChat} title="New chat" className="p-2 rounded-full border hover:bg-gray-50 shrink-0"><Plus size={17} /></button>
             </div>
-            <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
-              <div className="flex items-center gap-1 rounded-full bg-gray-100 p-1 shrink-0">
-                <button onClick={selectTextWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'text' ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>Text AI</button>
-                <button onClick={selectVideoWorkspace} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${aiWorkspace === 'video' ? 'bg-white shadow text-sky-700' : 'text-gray-500'}`}>Video AI</button>
-              </div>
-              {[['research', Search, researchMode, 'Deep research'], ['coding', Code2, codingMode, 'Coding'], ['data', BarChart3, dataMode, 'Data'], ['writing', PenSquare, writingMode, 'Writing'], ['social', Share2, socialMode, 'Social'], ['creative', Palette, creativeMode, 'Creative'], ['video', Video, videoMode, 'Video'], ['image', ImageIcon, mediaGenerateMode === 'image', 'Generate image'], ['edit', Wand2, mediaGenerateMode === 'edit-image', 'Edit image'], ['mediaVideo', Wand2, mediaGenerateMode === 'video', 'Generate video'], ['memory', Brain, memoryMode, 'Memory']].map(([mode, Icon, active, title]) => (
-                <button key={mode} onClick={() => mode === 'edit' ? startImageEdit() : toggleMode(mode)} title={title} aria-label={title} className={`p-2 rounded-full border shrink-0 ${active ? 'bg-purple-50 border-purple-300 text-purple-700' : 'hover:bg-gray-50'}`}><Icon size={17} /></button>
-              ))}
-              <button onClick={exportChat} disabled={!messages.length} className="p-2 rounded-full border hover:bg-gray-50 disabled:opacity-40 shrink-0" title="Export chat"><Download size={17} /></button>
-              <button onClick={saveWorkspace} className="p-2 rounded-full border hover:bg-gray-50 shrink-0" title="Save workspace"><FolderOpen size={17} /></button>
-              <button onClick={() => setSettingsOpen((v) => !v)} className={`p-2 rounded-full border hover:bg-gray-50 shrink-0 ${settingsOpen ? 'bg-gray-100' : ''}`} title="AI settings"><Settings size={17} /></button>
-            </div>
+
           </header>
           {settingsOpen && (
             <div className="border-b bg-white px-4 py-3 shadow-sm">

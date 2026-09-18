@@ -180,7 +180,6 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
               <span className="truncate">Search people, posts or hashtags</span>
             </button>
             <div className="flex items-center gap-4 pointer-events-auto shrink-0">
-              <button onClick={() => onSearch('')} aria-label="Search" className="md:hidden"><SearchIcon className="w-5 h-5" /></button>
               <button onClick={onNotifications} aria-label="Notifications" className="relative">
                 <Bell className="w-5 h-5" />
                 {unreadNotificationCount > 0 && (
@@ -214,7 +213,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
             </div>
           </div>
 
-          <div className="absolute left-4 right-20 bottom-8 text-white">
+          <div className="absolute left-4 right-20 bottom-24 text-white">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-xs font-bold">{(reel.user?.fullName?.[0] || reel.user?.username?.[0] || 'U').toUpperCase()}</div>
               <span className="font-semibold text-sm">{reel.user?.fullName || reel.user?.username}</span>
