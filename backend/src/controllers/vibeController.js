@@ -45,12 +45,6 @@ export const createVibe = async (req, res) => {
     if (!['image', 'video'].includes(mediaType)) return res.status(400).json({ success: false, message: 'Vibe must be an image or video' });
 
     await cleanupExpiredVibes();
-    const existing = await prisma.vibe.findMany({ where: { userId: req.userId }, select: { id: true, publicId: true, resourceType: true, mediaType: true } });
-    if (existing.length) {
-      await prisma.vibe.deleteMany({ where: { id: { in: existing.map(v => v.id) } } });
-      await Promise.allSettled(existing.map(deleteCloudinaryAsset));
-    }
-
     const vibe = await prisma.vibe.create({
       data: {
         userId: req.userId,
