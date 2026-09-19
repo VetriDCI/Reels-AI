@@ -6,6 +6,7 @@ import {
   Search, Code2, BarChart3, PenSquare, Share2
 } from 'lucide-react';
 import { aiAPI } from '../services/aiApi';
+import MediaEditor from '../components/MediaEditor';
 
 const MAX_FILES = 6;
 
@@ -47,6 +48,8 @@ function AIFeatures() {
   const audioInputRef = useRef(null);
   const [attachments, setAttachments] = useState([]);
   const [rawFiles, setRawFiles] = useState([]);
+  const [aiEditIndex, setAiEditIndex] = useState(null);
+  const [aiEditSaving, setAiEditSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -198,6 +201,21 @@ function AIFeatures() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const applyAIEdit = async (editedFile) => {
+    if (aiEditIndex == null || !editedFile) return;
+    setAiEditSaving(true);
+    try {
+      const res = await aiAPI.upload([editedFile]);
+      const uploaded = res.data?.data?.files?.[0];
+      if (!uploaded) throw new Error('Edited file upload failed');
+      setAttachments(prev => prev.map((item, i) => i === aiEditIndex ? uploaded : item));
+      setRawFiles(prev => prev.map((item, i) => i === aiEditIndex ? editedFile : item));
+      setAiEditIndex(null);
+    } catch (error) {
+      alert(error.response?.data?.message || error.message || 'Could not save edited attachment.');
+    } finally { setAiEditSaving(false); }
   };
 
   const removeAttachment = (index) => {
@@ -652,6 +670,7 @@ function AIFeatures() {
                   {attachments.map((file, index) => (
                     <div key={`${file.url}-${index}`} className="relative shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-xs">
                       {fileIcon(file.mimeType)}<span className="max-w-32 truncate">{file.name}</span>
+                      {rawFiles[index]?.type?.startsWith('image/') || rawFiles[index]?.type?.startsWith('video/') ? <button onClick={() => setAiEditIndex(index)} disabled={aiEditSaving} className="text-purple-600 font-semibold">Edit</button> : null}
                       <button onClick={() => removeAttachment(index)} className="text-gray-500 hover:text-red-500"><X size={14} /></button>
                     </div>
                   ))}
@@ -775,6 +794,7 @@ function AIFeatures() {
           </div>
         </main>
       </div>
+      {aiEditIndex != null && rawFiles[aiEditIndex] && <MediaEditor file={rawFiles[aiEditIndex]} mediaType={rawFiles[aiEditIndex].type?.startsWith('video/') ? 'video' : 'image'} onApply={applyAIEdit} onClose={() => setAiEditIndex(null)} />}
     </div>
   );
 }
