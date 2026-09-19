@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { X, Image, Video, Radio, RotateCcw, Pencil, Check, RefreshCw, Play, Pause } from 'lucide-react';
 import { postAPI, uploadAPI } from '../services/api';
+import MediaEditor from './MediaEditor';
 
 function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, initialDraft, onDraftSaved }) {
   const [content, setContent] = useState(initialDraft?.content || '');
@@ -8,6 +9,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   const [draftSaving, setDraftSaving] = useState(false);
   const [file, setFile] = useState(null);
   const [files, setFiles] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [mediaKind, setMediaKind] = useState(null);
   const [uploadStage, setUploadStage] = useState(null);
@@ -77,18 +79,39 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     appendSelectionRef.current = false;
     if (previewUrl && !appending) URL.revokeObjectURL(previewUrl);
     setFiles(nextFiles);
-    setFile(nextFiles[0]);
-    setMediaKind(kind);
-    setPreviewUrl(URL.createObjectURL(nextFiles[0]));
+    const nextIndex = appending ? Math.max(0, nextFiles.length - valid.length) : 0;
+    setActiveIndex(nextIndex);
+    setFile(nextFiles[nextIndex]);
+    setMediaKind(nextFiles[nextIndex]?.type?.startsWith('video/') ? 'video' : 'photo');
+    setPreviewUrl(URL.createObjectURL(nextFiles[nextIndex]));
     setImageRotation(0);
     setEditOpen(false);
   };
 
   const clearMedia = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFile(null); setFiles([]); setPreviewUrl(null); setMediaKind(null); setEditOpen(false); setImageRotation(0);
+    setFile(null); setFiles([]); setActiveIndex(0); setPreviewUrl(null); setMediaKind(null); setEditOpen(false); setImageRotation(0);
     if (photoInputRef.current) photoInputRef.current.value = '';
     if (videoInputRef.current) videoInputRef.current.value = '';
+  };
+
+  const selectMedia = (index) => {
+    const item = files[index];
+    if (!item) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setActiveIndex(index);
+    setFile(item);
+    setMediaKind(item.type?.startsWith('video/') ? 'video' : 'photo');
+    setPreviewUrl(URL.createObjectURL(item));
+    setEditOpen(false);
+  };
+
+  const applyEditedMedia = (editedFile) => {
+    setFiles(prev => prev.map((item, i) => i === activeIndex ? editedFile : item));
+    setFile(editedFile);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(editedFile));
+    setEditOpen(false);
   };
 
   const rotateImage = async () => {
@@ -120,13 +143,19 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     if (!content.trim() && !files.length && !initialDraft?.mediaUrl) return;
     setDraftSaving(true);
     try {
-      let mediaUrl = initialDraft?.mediaUrl || null;
-      let mediaType = initialDraft?.mediaType || 'text';
-      if (file) { const upload = await uploadAPI.media(file); mediaUrl = upload.data.data.url; mediaType = upload.data.data.mediaType; }
+      const selectedFiles = files.length ? files : (file ? [file] : []);
+      let mediaItems = Array.isArray(initialDraft?.mediaItems) ? initialDraft.mediaItems : [];
+      if (selectedFiles.length) {
+        mediaItems = await Promise.all(selectedFiles.map(async selectedFile => {
+          const upload = await uploadAPI.media(selectedFile);
+          return { mediaUrl: upload.data.data.url, mediaType: upload.data.data.mediaType };
+        }));
+      }
+      const primary = mediaItems[0] || { mediaUrl: initialDraft?.mediaUrl || null, mediaType: initialDraft?.mediaType || 'text' };
       const key = `ra-social-drafts-${userId || 'guest'}`;
       const existing = JSON.parse(localStorage.getItem(key) || '[]');
       const id = savedDraftId || crypto.randomUUID();
-      const draft = { id, content: content.trim(), mediaUrl, mediaType, isCreatorAd, createdAt: initialDraft?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const draft = { id, content: content.trim(), mediaUrl: primary.mediaUrl, mediaType: primary.mediaType, mediaItems, isCreatorAd, createdAt: initialDraft?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
       const next = [draft, ...existing.filter(d => d.id !== id)].slice(0, 50);
       localStorage.setItem(key, JSON.stringify(next)); setSavedDraftId(id); onDraftSaved?.();
       alert('Draft saved');
@@ -202,7 +231,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
                   ? <video key={previewUrl} src={previewUrl} controls playsInline preload="metadata" className="w-full max-h-80 object-contain bg-black" />
                   : <img src={previewUrl} alt="Selected media preview" className="w-full max-h-80 object-contain bg-black" />}
                 <div className="absolute top-2 right-2 flex gap-2">
-                  {files.length <= 1 && <button type="button" onClick={() => setEditOpen(true)} className="p-2 bg-white/90 rounded-full text-gray-800 shadow" aria-label="Edit selected media"><Pencil className="w-4 h-4" /></button>}
+                  <button type="button" onClick={() => setEditOpen(true)} className="p-2 bg-white/90 rounded-full text-gray-800 shadow" aria-label="Edit selected media"><Pencil className="w-4 h-4" /></button>
                   <button type="button" onClick={clearMedia} className="p-2 bg-black/70 rounded-full text-white" aria-label="Remove media"><X className="w-4 h-4" /></button>
                 </div>
               </div>
@@ -210,26 +239,11 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
                 <div className="min-w-0"><p className="text-sm font-semibold truncate">{files.length > 1 ? `${files.length} media files selected` : file?.name}</p><p className="text-xs text-gray-500">{files.length > 1 ? `Each ${mediaKind === 'video' ? 'video' : 'photo'} will be posted separately.` : `${mediaKind === 'video' ? 'Video' : 'Image'} · ${(file?.size / 1024 / 1024).toFixed(1)} MB`}</p></div>
                 <button type="button" onClick={() => (mediaKind === 'video' ? pickVideo(true) : pickPhoto(true))} className="flex items-center gap-1 px-3 py-2 rounded-full bg-gray-100 text-sm font-medium"><RefreshCw className="w-4 h-4" />Add more {mediaKind === 'video' ? 'videos' : 'photos'}</button>
               </div>
-              {files.length > 1 && <div className="px-3 pb-3 flex gap-2 overflow-x-auto">{files.map((item, index) => <div key={`${item.name}-${index}`} className="relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border bg-black">{item.type.startsWith('video/') ? <div className="w-full h-full flex items-center justify-center text-white"><Video className="w-6 h-6" /></div> : <img src={URL.createObjectURL(item)} alt="" className="w-full h-full object-cover" />}</div>)}</div>}
+              {files.length > 1 && <div className="px-3 pb-3 flex gap-2 overflow-x-auto">{files.map((item, index) => <button type="button" onClick={() => selectMedia(index)} key={`${item.name}-${index}`} className={`relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 bg-black ${activeIndex === index ? 'border-purple-600 ring-2 ring-purple-200' : 'border-gray-200'}`}>{item.type.startsWith('video/') ? <div className="w-full h-full flex items-center justify-center text-white"><Video className="w-6 h-6" /></div> : <img src={URL.createObjectURL(item)} alt="" className="w-full h-full object-cover" />}{index === activeIndex && <span className="absolute bottom-0 left-0 right-0 text-[9px] bg-purple-600 text-white">Editing</span>}</button>)}</div>}
             </div>
           )}
 
-          {editOpen && previewUrl && (
-            <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div><p className="font-semibold text-gray-900">Edit media</p><p className="text-xs text-gray-500">{mediaKind === 'photo' ? 'Rotate the image before posting.' : 'Preview and control the selected video before posting.'}</p></div>
-                <button type="button" onClick={() => setEditOpen(false)} className="p-2 bg-white rounded-full"><Check className="w-4 h-4" /></button>
-              </div>
-              {mediaKind === 'photo' ? (
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={rotateImage} className="flex items-center gap-2 px-4 py-2 bg-white rounded-full text-sm font-semibold"><RotateCcw className="w-4 h-4" />Rotate 90°</button>
-                  <span className="text-xs text-gray-500">Rotation is applied to the uploaded image.</span>
-                </div>
-              ) : (
-                <div className="text-xs text-gray-600 flex items-center gap-2"><Video className="w-4 h-4" />Use the video controls above to review the selected video. Replace it if you need a different file.</div>
-              )}
-            </div>
-          )}
+          {editOpen && previewUrl && file && <MediaEditor file={file} mediaType={mediaKind === 'video' ? 'video' : 'image'} onApply={applyEditedMedia} onClose={() => setEditOpen(false)} />}
 
           {livePreview && (
             <div className="border-2 border-red-200 rounded-xl p-4 bg-red-50">
