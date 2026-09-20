@@ -22,7 +22,12 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
 
 
   useEffect(() => {
-    if (initialQuery?.trim()) handleSearch(initialQuery);
+    const value = String(initialQuery || '').trim();
+    setQuery(value);
+    setError('');
+    setResults(null);
+    if (value) handleSearch(value);
+    // Search should run whenever another page opens Search with a new query.
   }, [initialQuery]);
 
   const saveHistory = (term) => {
@@ -81,9 +86,9 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
-              autoFocus type="search" value={query}
+              autoFocus type="search" enterKeyHint="search" value={query}
               onChange={e => { setQuery(e.target.value); if (!e.target.value.trim()) setResults(null); }}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearch(); } }}
               placeholder="Search"
               className="w-full pl-10 pr-10 py-3 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
