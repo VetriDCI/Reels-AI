@@ -1,27 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Check, RotateCw, FlipHorizontal, FlipVertical, Crop, SlidersHorizontal,
-  Sparkles, Type, Scissors, Volume2, VolumeX, Play, Pause, SunMedium,
-  Palette, Droplets, Contrast, Move, ZoomIn, RotateCcw
+  Sparkles, Type, Gauge, Scissors, Volume2, VolumeX, Play, Pause, Music2,
+  Wand2, Move, Palette, RotateCcw
 } from 'lucide-react';
 
 const FILTERS = {
   Original: '',
   Vivid: 'saturate(1.35) contrast(1.08)',
-  Warm: 'saturate(1.15) sepia(.16) contrast(1.04)',
-  Cool: 'saturate(.92) hue-rotate(10deg) contrast(1.05)',
+  Warm: 'saturate(1.16) sepia(.14) contrast(1.04)',
+  Cool: 'saturate(.95) hue-rotate(12deg) contrast(1.05)',
   'B&W': 'grayscale(1) contrast(1.08)',
-  Vintage: 'sepia(.32) saturate(.82) contrast(.96)',
-  Cinematic: 'contrast(1.18) saturate(.9) brightness(.98)',
-  Fade: 'contrast(.9) saturate(.82) brightness(1.04)',
-  Dramatic: 'contrast(1.32) saturate(1.08) brightness(.96)',
+  Vintage: 'sepia(.28) saturate(.78) contrast(.96)',
+  Cinematic: 'contrast(1.18) saturate(.88) brightness(.98)',
+  Fade: 'contrast(.92) saturate(.84) brightness(1.04)',
+  Dramatic: 'contrast(1.3) saturate(1.05) brightness(.96)',
+  Sunset: 'sepia(.12) saturate(1.3) hue-rotate(-8deg) contrast(1.06)',
+  Mono: 'grayscale(1) contrast(1.2) brightness(.96)'
 };
 
-const ASPECTS = ['free', '1:1', '4:5', '3:4', '16:9', '9:16'];
+const RATIOS = [
+  ['free', 'Original'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:4', '3:4'],
+  ['16:9', '16:9'], ['9:16', '9:16']
+];
+const SPEEDS = [.25, .5, .75, 1, 1.25, 1.5, 2, 3];
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
 function MediaEditor({ file, mediaType, onApply, onClose }) {
   const type = mediaType || (file?.type?.startsWith('video/') ? 'video' : 'image');
+  const [tab, setTab] = useState(type === 'video' ? 'trim' : 'adjust');
   const [rotation, setRotation] = useState(0);
   const [flipX, setFlipX] = useState(false);
   const [flipY, setFlipY] = useState(false);
@@ -31,309 +38,177 @@ function MediaEditor({ file, mediaType, onApply, onClose }) {
   const [saturation, setSaturation] = useState(100);
   const [blur, setBlur] = useState(0);
   const [sharpen, setSharpen] = useState(0);
-  const [vignette, setVignette] = useState(0);
   const [warmth, setWarmth] = useState(0);
   const [tint, setTint] = useState(0);
-  const [aspect, setAspect] = useState('free');
+  const [vignette, setVignette] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const [offsetX, setOffsetX] = useState(0);
-  const [offsetY, setOffsetY] = useState(0);
-  const [overlayText, setOverlayText] = useState('');
-  const [textSize, setTextSize] = useState(32);
-  const [textPosition, setTextPosition] = useState('bottom');
+  const [posX, setPosX] = useState(0);
+  const [posY, setPosY] = useState(0);
+  const [aspect, setAspect] = useState('free');
+  const [fitMode, setFitMode] = useState('fill');
+  const [text, setText] = useState('');
+  const [textSize, setTextSize] = useState(34);
   const [textColor, setTextColor] = useState('#ffffff');
-  const [textBackground, setTextBackground] = useState(true);
-  const [textStroke, setTextStroke] = useState(0);
-  const [textAlign, setTextAlign] = useState('center');
+  const [textBg, setTextBg] = useState(true);
+  const [textStroke, setTextStroke] = useState(1);
+  const [textPosition, setTextPosition] = useState('bottom');
   const [start, setStart] = useState(0);
   const [end, setEnd] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [volume, setVolume] = useState(1);
-  const [activeTab, setActiveTab] = useState(type === 'video' ? 'video' : 'adjust');
-  const [processing, setProcessing] = useState(false);
+  const [musicFile, setMusicFile] = useState(null);
+  const [musicVolume, setMusicVolume] = useState(.65);
+  const [musicLoop, setMusicLoop] = useState(true);
+  const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [videoDuration, setVideoDuration] = useState(0);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const imageRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const musicInputRef = useRef(null);
   const url = useMemo(() => file ? URL.createObjectURL(file) : '', [file]);
+  const musicUrl = useMemo(() => musicFile ? URL.createObjectURL(musicFile) : '', [musicFile]);
 
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
-  useEffect(() => {
-    if (type === 'video' && videoDuration && !end) setEnd(videoDuration);
-  }, [type, videoDuration, end]);
+  useEffect(() => () => { if (musicUrl) URL.revokeObjectURL(musicUrl); }, [musicUrl]);
+  useEffect(() => { if (duration && !end) setEnd(duration); }, [duration, end]);
 
-  const baseFilter = `${FILTERS[filter] || ''} brightness(${brightness / 100}) contrast(${contrast / 100}) saturate(${saturation / 100}) blur(${blur}px) hue-rotate(${tint}deg) sepia(${Math.max(0, warmth) / 260})`;
-  const transform = `rotate(${rotation}deg) scaleX(${flipX ? -zoom : zoom}) scaleY(${flipY ? -zoom : zoom}) translate(${offsetX / Math.max(zoom, .01)}%, ${offsetY / Math.max(zoom, .01)}%)`;
+  const visualFilter = `${FILTERS[filter] || ''} brightness(${brightness / 100}) contrast(${contrast / 100}) saturate(${saturation / 100}) blur(${blur}px) ${tint ? `hue-rotate(${tint}deg)` : ''}`;
+  const previewTransform = `translate(${posX * 0.35}px, ${posY * 0.35}px) rotate(${rotation}deg) scale(${zoom}) scaleX(${flipX ? -1 : 1}) scaleY(${flipY ? -1 : 1})`;
 
   const reset = () => {
     setRotation(0); setFlipX(false); setFlipY(false); setFilter('Original');
     setBrightness(100); setContrast(100); setSaturation(100); setBlur(0); setSharpen(0);
-    setVignette(0); setWarmth(0); setTint(0); setAspect('free'); setZoom(1); setOffsetX(0); setOffsetY(0);
-    setOverlayText(''); setTextSize(32); setTextPosition('bottom'); setTextColor('#ffffff');
-    setTextBackground(true); setTextStroke(0); setTextAlign('center'); setStart(0); setEnd(videoDuration || 0);
-    setSpeed(1); setVolume(1); setError('');
-  };
-
-  const getCrop = (w, h) => {
-    let cropW = w, cropH = h;
-    if (aspect !== 'free') {
-      const [aw, ah] = aspect.split(':').map(Number);
-      if (w / h > aw / ah) cropW = h * aw / ah;
-      else cropH = w * ah / aw;
-    }
-    const factor = 1 / Math.max(zoom, 1);
-    cropW *= factor; cropH *= factor;
-    const maxX = Math.max(0, (w - cropW) / 2);
-    const maxY = Math.max(0, (h - cropH) / 2);
-    const cx = w / 2 + (offsetX / 100) * maxX * 2;
-    const cy = h / 2 + (offsetY / 100) * maxY * 2;
-    return {
-      x: clamp(cx - cropW / 2, 0, Math.max(0, w - cropW)),
-      y: clamp(cy - cropH / 2, 0, Math.max(0, h - cropH)),
-      w: cropW, h: cropH,
-    };
-  };
-
-  const drawVignette = (ctx, w, h) => {
-    if (!vignette) return;
-    const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * .18, w / 2, h / 2, Math.max(w, h) * .72);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, `rgba(0,0,0,${clamp(vignette / 100, 0, .85)})`);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    setWarmth(0); setTint(0); setVignette(0); setZoom(1); setPosX(0); setPosY(0);
+    setAspect('free'); setFitMode('fill'); setText(''); setTextSize(34); setTextColor('#ffffff');
+    setTextBg(true); setTextStroke(1); setTextPosition('bottom'); setStart(0); setEnd(duration || 0);
+    setSpeed(1); setVolume(1); setMusicFile(null); setMusicVolume(.65); setError('');
   };
 
   const drawText = (ctx, w, h) => {
-    const text = overlayText.trim();
-    if (!text) return;
+    if (!text.trim()) return;
     ctx.save();
-    const size = Number(textSize) || 32;
-    ctx.font = `700 ${size}px system-ui, sans-serif`;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = textAlign;
-    const x = textAlign === 'left' ? Math.min(40, w * .08) : textAlign === 'right' ? w - Math.min(40, w * .08) : w / 2;
-    const y = textPosition === 'top' ? size * 1.7 : textPosition === 'center' ? h / 2 : h - size * 1.8;
-    const metrics = ctx.measureText(text);
-    const padX = 18, padY = 11;
-    const left = textAlign === 'left' ? x - padX : textAlign === 'right' ? x - metrics.width - padX : x - metrics.width / 2 - padX;
-    if (textBackground) {
-      ctx.fillStyle = 'rgba(0,0,0,.58)';
-      ctx.fillRect(left, y - size / 2 - padY, metrics.width + padX * 2, size + padY * 2);
-    }
-    if (textStroke) {
-      ctx.lineWidth = textStroke * 2;
-      ctx.strokeStyle = 'rgba(0,0,0,.85)';
-      ctx.strokeText(text, x, y);
-    }
-    ctx.fillStyle = textColor;
-    ctx.fillText(text, x, y);
+    const safeSize = clamp(textSize, 14, 100);
+    ctx.font = `700 ${safeSize}px system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const y = textPosition === 'top' ? safeSize * 1.8 : textPosition === 'center' ? h / 2 : h - safeSize * 1.8;
+    const label = text.trim();
+    const metrics = ctx.measureText(label);
+    const padX = 18, padY = 10;
+    if (textBg) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.roundRect((w - metrics.width) / 2 - padX, y - safeSize / 2 - padY, metrics.width + padX * 2, safeSize + padY * 2, 12); ctx.fill(); }
+    if (textStroke > 0) { ctx.lineWidth = textStroke * 2; ctx.strokeStyle = 'rgba(0,0,0,.9)'; ctx.strokeText(label, w / 2, y); }
+    ctx.fillStyle = textColor; ctx.fillText(label, w / 2, y);
     ctx.restore();
   };
 
-  const prepareCanvas = (sourceW, sourceH) => {
-    const crop = getCrop(sourceW, sourceH);
-    const ratio = crop.w / crop.h;
-    const maxDimension = 2160;
-    let outW = Math.min(Math.round(crop.w), maxDimension);
-    let outH = Math.round(outW / ratio);
-    if (outH > maxDimension) { outH = maxDimension; outW = Math.round(outH * ratio); }
-    const rotated = rotation % 180 !== 0;
-    const canvasW = rotated ? outH : outW;
-    const canvasH = rotated ? outW : outH;
-    return { crop, outW, outH, canvasW, canvasH };
-  };
-
-  const drawFrame = (ctx, source, sourceW, sourceH, canvasW, canvasH) => {
-    const crop = getCrop(sourceW, sourceH);
-    const rotated = rotation % 180 !== 0;
-    const drawW = rotated ? canvasH : canvasW;
-    const drawH = rotated ? canvasW : canvasH;
-    ctx.save();
-    ctx.filter = `${FILTERS[filter] || ''} brightness(${brightness / 100}) contrast(${contrast / 100}) saturate(${saturation / 100}) blur(${blur}px) hue-rotate(${tint}deg) sepia(${Math.max(0, warmth) / 260})`;
-    ctx.translate(canvasW / 2, canvasH / 2);
-    ctx.rotate(rotation * Math.PI / 180);
-    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
-    ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, -drawW / 2, -drawH / 2, drawW, drawH);
-    ctx.restore();
-    ctx.filter = 'none';
-    // A portable sharpening fallback: a very subtle high-contrast composite.
-    if (sharpen > 0) {
-      ctx.save(); ctx.globalAlpha = sharpen / 320; ctx.globalCompositeOperation = 'overlay';
-      ctx.drawImage(ctx.canvas, 0, 0, canvasW, canvasH); ctx.restore();
+  const applyColorLayers = (ctx) => {
+    if (warmth > 0) { ctx.save(); ctx.globalAlpha = warmth / 180; ctx.fillStyle = '#ffb35c'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore(); }
+    if (warmth < 0) { ctx.save(); ctx.globalAlpha = Math.abs(warmth) / 180; ctx.fillStyle = '#5aa7ff'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore(); }
+    if (vignette > 0) {
+      const g = ctx.createRadialGradient(ctx.canvas.width/2, ctx.canvas.height/2, Math.min(ctx.canvas.width, ctx.canvas.height)*.18, ctx.canvas.width/2, ctx.canvas.height/2, Math.max(ctx.canvas.width, ctx.canvas.height)*.72);
+      g.addColorStop(.45, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${vignette/100})`);
+      ctx.fillStyle = g; ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
     }
-    drawVignette(ctx, canvasW, canvasH);
-    drawText(ctx, canvasW, canvasH);
   };
 
-  const imageCanvas = async () => {
-    const img = imageRef.current;
-    if (!img) throw new Error('Image is not ready');
-    if (!img.naturalWidth || !img.naturalHeight) throw new Error('Please wait for the image to finish loading.');
-    const { outW, outH, canvasW, canvasH } = prepareCanvas(img.naturalWidth, img.naturalHeight);
-    const canvas = document.createElement('canvas'); canvas.width = canvasW; canvas.height = canvasH;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('Image editor could not create a drawing surface.');
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    drawFrame(ctx, img, img.naturalWidth, img.naturalHeight, canvasW, canvasH);
-    return await new Promise((resolve, reject) => {
-      canvas.toBlob(blob => blob ? resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '-edited.jpg', { type: 'image/jpeg', lastModified: Date.now() })) : reject(new Error('Could not export image.')), 'image/jpeg', .95);
-    });
+  const getCrop = (w, h) => {
+    if (aspect === 'free') return { w, h };
+    const [aw, ah] = aspect.split(':').map(Number); const target = aw / ah;
+    if (w / h > target) return { w: h * target, h };
+    return { w, h: w / target };
   };
 
-  const waitForSeek = (video, time) => new Promise((resolve, reject) => {
-    const cleanup = () => { video.removeEventListener('seeked', done); video.removeEventListener('error', fail); };
-    const done = () => { cleanup(); resolve(); };
-    const fail = () => { cleanup(); reject(new Error('Could not seek to the selected time.')); };
-    video.addEventListener('seeked', done, { once: true }); video.addEventListener('error', fail, { once: true });
-    try { video.currentTime = time; } catch (e) { cleanup(); reject(e); }
-  });
+  const imageExport = async () => {
+    const img = imageRef.current; if (!img) throw new Error('Image is not ready.');
+    const nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+    const crop = getCrop(nw, nh); const rotated = rotation % 180 !== 0;
+    const outW = Math.max(1, Math.round(rotated ? crop.h : crop.w));
+    const outH = Math.max(1, Math.round(rotated ? crop.w : crop.h));
+    const canvas = document.createElement('canvas'); canvas.width = outW; canvas.height = outH;
+    const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('Could not create image editor canvas.');
+    ctx.save(); ctx.fillStyle = '#111'; ctx.fillRect(0,0,outW,outH);
+    if (fitMode === 'blur') { ctx.filter = 'blur(28px)'; ctx.drawImage(img, 0, 0, outW, outH); ctx.filter = 'none'; }
+    ctx.translate(outW/2, outH/2); ctx.rotate(rotation*Math.PI/180); ctx.scale(flipX?-1:1, flipY?-1:1); ctx.filter = `${FILTERS[filter]||''} brightness(${brightness/100}) contrast(${contrast/100}) saturate(${saturation/100}) blur(${blur}px)`;
+    const sx = (nw-crop.w)/2 - (posX/100)*crop.w*.28, sy = (nh-crop.h)/2 - (posY/100)*crop.h*.28;
+    ctx.drawImage(img, sx, sy, crop.w, crop.h, -crop.w*zoom/2, -crop.h*zoom/2, crop.w*zoom, crop.h*zoom);
+    ctx.restore(); ctx.filter = 'none'; applyColorLayers(ctx); drawText(ctx,outW,outH);
+    return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(new File([b], file.name.replace(/\.[^.]+$/,'')+'-edited.jpg',{type:'image/jpeg',lastModified:Date.now()})):reject(new Error('Could not export image.')),'image/jpeg',.95));
+  };
 
-  const videoCanvas = async () => {
+  const exportVideo = async () => {
     const video = videoRef.current;
-    if (!video) throw new Error('Video is not ready');
-    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || typeof video.captureStream !== 'function') {
-      throw new Error('This browser cannot export edited videos. Chrome/Edge on Android or desktop is recommended.');
-    }
-    const duration = Number.isFinite(videoDuration) && videoDuration > 0 ? videoDuration : (video.duration || 0);
-    if (!duration) throw new Error('Video duration is not ready yet. Please wait a moment and try again.');
-    const from = clamp(Number(start) || 0, 0, Math.max(0, duration - .05));
-    const to = clamp(Number(end) || duration, from + .05, duration);
-    const sourceW = video.videoWidth || 1280, sourceH = video.videoHeight || 720;
-    const { outW, outH, canvasW, canvasH } = prepareCanvas(sourceW, sourceH);
-    const canvas = canvasRef.current || document.createElement('canvas'); canvas.width = canvasW; canvas.height = canvasH;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('Video editor could not create a drawing surface.');
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    const stream = canvas.captureStream(30);
-    const source = video.captureStream();
-    source.getAudioTracks().forEach(track => stream.addTrack(track));
-    const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
-      .find(m => MediaRecorder.isTypeSupported(m)) || '';
-    const recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 7000000 } : undefined);
-    const chunks = [];
-    let animationId = null;
-    let stopped = false;
-    const done = new Promise((resolve, reject) => {
-      recorder.ondataavailable = e => { if (e.data?.size) chunks.push(e.data); };
-      recorder.onerror = () => reject(new Error('Video export failed. Please try again.'));
-      recorder.onstop = () => resolve();
-    });
-    const stop = () => { stopped = true; if (animationId != null) cancelAnimationFrame(animationId); if (recorder.state !== 'inactive') recorder.stop(); };
-
+    if (!video) throw new Error('Video is not ready.');
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || typeof video.captureStream !== 'function') throw new Error('This browser cannot export edited videos. Try Chrome on Android or another modern browser.');
+    const total = duration || video.duration || 0; if (!total) throw new Error('Video duration is not ready yet.');
+    const from = clamp(Number(start)||0,0,Math.max(0,total-.05)); const to = clamp(Number(end)||total,from+.05,total);
+    const bw = video.videoWidth||1280, bh=video.videoHeight||720, crop=getCrop(bw,bh), rotated=rotation%180!==0;
+    const cw=Math.max(2,Math.round(rotated?crop.h:crop.w)), ch=Math.max(2,Math.round(rotated?crop.w:crop.h));
+    const canvas=canvasRef.current||document.createElement('canvas'); canvas.width=cw; canvas.height=ch; const ctx=canvas.getContext('2d',{alpha:false});
+    const stream=canvas.captureStream(30); const source=video.captureStream();
+    let audioCtx=null, destination=null, videoSource=null, musicEl=null, musicSource=null;
     try {
-      setPlaying(true); video.pause(); video.playbackRate = speed; video.volume = volume;
-      await waitForSeek(video, from);
-      recorder.start(200);
-      await video.play();
-      const draw = () => {
-        if (stopped) return;
-        if (video.currentTime >= to || video.ended) { stop(); return; }
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawFrame(ctx, video, sourceW, sourceH, canvasW, canvasH);
-        animationId = requestAnimationFrame(draw);
-      };
-      draw();
-      await done;
-      video.pause();
+      if (source.getAudioTracks().length || musicUrl) {
+        audioCtx=new (window.AudioContext||window.webkitAudioContext)(); destination=audioCtx.createMediaStreamDestination();
+        videoSource=audioCtx.createMediaElementSource(video); const videoGain=audioCtx.createGain(); videoGain.gain.value=volume; videoSource.connect(videoGain).connect(destination); videoSource.connect(audioCtx.destination);
+        if (musicUrl) { musicEl=new Audio(musicUrl); musicEl.loop=musicLoop; musicEl.volume=1; musicSource=audioCtx.createMediaElementSource(musicEl); const musicGain=audioCtx.createGain(); musicGain.gain.value=musicVolume; musicSource.connect(musicGain).connect(destination); musicSource.connect(audioCtx.destination); }
+        destination.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+      } else source.getAudioTracks().forEach(t=>stream.addTrack(t));
+      const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+      const recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:8000000}:undefined); const chunks=[]; let raf=null; let stopped=false;
+      const done=new Promise((resolve,reject)=>{recorder.ondataavailable=e=>e.data?.size&&chunks.push(e.data);recorder.onerror=()=>reject(new Error('Video export failed. Please try again.'));recorder.onstop=resolve;});
+      const seekTo=()=>new Promise((resolve,reject)=>{const ok=()=>{video.removeEventListener('seeked',ok);resolve();};video.addEventListener('seeked',ok,{once:true});video.addEventListener('error',()=>reject(new Error('Could not seek video.')),{once:true});video.currentTime=from;});
+      await seekTo(); video.playbackRate=speed; video.volume=volume; if(audioCtx?.state==='suspended') await audioCtx.resume(); if(musicEl){musicEl.currentTime=0;}
+      recorder.start(200); await video.play(); if(musicEl) await musicEl.play().catch(()=>{}); setPlaying(true);
+      const draw=()=>{if(stopped)return;if(video.currentTime>=to||video.ended){stopped=true;video.pause();if(musicEl)musicEl.pause();if(recorder.state!=='inactive')recorder.stop();return;}ctx.save();ctx.clearRect(0,0,cw,ch);ctx.fillStyle='#111';ctx.fillRect(0,0,cw,ch);if(fitMode==='blur'){ctx.filter='blur(24px)';ctx.drawImage(video,0,0,cw,ch);ctx.filter='none';}ctx.translate(cw/2,ch/2);ctx.rotate(rotation*Math.PI/180);ctx.scale(flipX?-1:1,flipY?-1:1);ctx.filter=`${FILTERS[filter]||''} brightness(${brightness/100}) contrast(${contrast/100}) saturate(${saturation/100}) blur(${blur}px)`;const sx=(bw-crop.w)/2-(posX/100)*crop.w*.28,sy=(bh-crop.h)/2-(posY/100)*crop.h*.28;ctx.drawImage(video,sx,sy,crop.w,crop.h,-crop.w*zoom/2,-crop.h*zoom/2,crop.w*zoom,crop.h*zoom);ctx.restore();ctx.filter='none';applyColorLayers(ctx);drawText(ctx,cw,ch);raf=requestAnimationFrame(draw);};
+      draw(); await done; if(raf)cancelAnimationFrame(raf); if(!chunks.length)throw new Error('No edited video data was produced.');
+      return new File([new Blob(chunks,{type:mime||'video/webm'})],file.name.replace(/\.[^.]+$/,'')+'-edited.webm',{type:mime||'video/webm',lastModified:Date.now()});
     } finally {
-      if (animationId != null) cancelAnimationFrame(animationId);
-      if (recorder.state !== 'inactive') recorder.stop();
-      source.getTracks().forEach(track => track.stop()); stream.getTracks().forEach(track => track.stop());
-      video.playbackRate = 1; video.volume = 1; setPlaying(false);
+      try{video.pause();}catch{}; if(video)video.playbackRate=1; if(video)video.volume=1; try{source.getTracks().forEach(t=>t.stop());}catch{}; try{stream.getTracks().forEach(t=>t.stop());}catch{}; try{if(audioCtx)audioCtx.close();}catch{}; if(musicEl)musicEl.pause(); setPlaying(false);
     }
-    if (!chunks.length) throw new Error('No edited video data was produced. Please try again.');
-    const blob = new Blob(chunks, { type: mime || 'video/webm' });
-    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '-edited.webm', { type: blob.type || 'video/webm', lastModified: Date.now() });
   };
 
-  const apply = async () => {
-    if (!file) return;
-    setProcessing(true); setError('');
-    try {
-      const edited = type === 'image' ? await imageCanvas() : await videoCanvas();
-      onApply?.(edited);
-    } catch (e) { setError(e?.message || 'Could not export the edited media.'); }
-    finally { setProcessing(false); setPlaying(false); }
-  };
+  const apply = async () => { if(!file)return; setProcessing(true);setError('');try{onApply?.(type==='image'?await imageExport():await exportVideo());}catch(e){setError(e.message||'Could not export edited media.');}finally{setProcessing(false);setPlaying(false);} };
+  const previewSeek=(value)=>{const n=Number(value);setStart(Math.min(n,Math.max(0,(end||duration)-.1)));if(videoRef.current)videoRef.current.currentTime=n;};
+  const previewEnd=(value)=>setEnd(Math.max(Number(value),start+.1));
 
-  const seek = value => { const n = Number(value); setStart(Math.min(n, Math.max(0, end - .1))); if (videoRef.current) videoRef.current.currentTime = n; };
-  const seekEnd = value => { const n = Number(value); setEnd(Math.max(n, start + .1)); };
+  const tabs=type==='video'
+    ? [['trim',Scissors,'Trim'],['adjust',SlidersHorizontal,'Adjust'],['filters',Sparkles,'Filters'],['crop',Crop,'Crop'],['text',Type,'Text'],['music',Music2,'Music'],['speed',Gauge,'Speed']]
+    : [['adjust',SlidersHorizontal,'Adjust'],['filters',Sparkles,'Filters'],['crop',Crop,'Crop'],['text',Type,'Text']];
 
-  const tabs = type === 'video'
-    ? [['video', Scissors], ['adjust', SlidersHorizontal], ['color', Palette], ['filters', Sparkles], ['crop', Crop], ['text', Type]]
-    : [['adjust', SlidersHorizontal], ['color', Palette], ['filters', Sparkles], ['crop', Crop], ['text', Type]];
-
-  return (
-    <div className="fixed inset-0 z-[180] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full max-w-5xl max-h-[96dvh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl">
-        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b px-4 py-3 flex items-center gap-3">
-          <button onClick={onClose} disabled={processing} className="p-2 rounded-full hover:bg-gray-100" aria-label="Close"><X /></button>
-          <div className="flex-1 min-w-0"><b className="text-base sm:text-lg">{type === 'image' ? 'Pro Photo Editor' : 'Pro Video Editor'}</b><p className="text-xs text-gray-500 truncate">Edit only • nothing is uploaded until you choose Post, Send, Vibe or Save</p></div>
-          <button onClick={reset} disabled={processing} className="hidden sm:flex items-center gap-1 text-xs font-semibold text-gray-500 px-3 py-2 rounded-full hover:bg-gray-100"><RotateCcw className="w-4 h-4" />Reset</button>
-          <button onClick={apply} disabled={processing} className="px-4 py-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white font-semibold flex items-center gap-1 shadow-lg">{processing ? 'Saving…' : <><Check className="w-4 h-4" />Save edit</>}</button>
-        </div>
-
-        <div className="p-3 sm:p-5 grid lg:grid-cols-[1.35fr_.85fr] gap-4">
-          <div className="space-y-3">
-            <div className="rounded-2xl overflow-hidden bg-neutral-950 min-h-72 flex items-center justify-center relative">
-              {type === 'image' ? (
-                <img ref={imageRef} src={url} alt="Editing preview" className="max-h-[58vh] max-w-full object-contain transition-transform" style={{ filter: baseFilter, transform }} />
-              ) : (
-                <div className="relative w-full flex items-center justify-center"><video ref={videoRef} src={url} controls={false} playsInline className="w-full max-h-[58vh] object-contain" style={{ filter: baseFilter, transform }} onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration || 0); if (!end) setEnd(e.currentTarget.duration || 0); }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} /><canvas ref={canvasRef} className="hidden" /><button type="button" onClick={() => { const v = videoRef.current; if (!v) return; v.paused ? v.play() : v.pause(); }} className="absolute left-3 bottom-3 w-11 h-11 rounded-full bg-black/70 text-white flex items-center justify-center">{playing ? <Pause /> : <Play />}</button></div>
-              )}
-              {vignette > 0 && <div className="pointer-events-none absolute inset-0" style={{ background: `radial-gradient(circle, transparent ${35 + (100 - vignette) * .25}%, rgba(0,0,0,${vignette / 100}) 100%)` }} />}
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-gray-500"><span>{file?.name || 'Media'}</span><span>{file ? `${Math.max(0.01, file.size / 1024 / 1024).toFixed(1)} MB` : ''}</span></div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              {tabs.map(([tab, Icon]) => <button key={tab} onClick={() => setActiveTab(tab)} className={`px-2 py-2 rounded-xl text-[11px] font-semibold border ${activeTab === tab ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600'}`}><Icon className="w-4 h-4 mx-auto mb-1" />{tab[0].toUpperCase() + tab.slice(1)}</button>)}
-            </div>
-
-            {activeTab === 'video' && type === 'video' && <section className="space-y-4 rounded-2xl border p-4">
-              <div><label className="text-xs font-bold">Trim start · {start.toFixed(1)}s</label><input type="range" min="0" max={Math.max(videoDuration, .1)} step=".1" value={start} onChange={e => seek(e.target.value)} className="w-full" /></div>
-              <div><label className="text-xs font-bold">Trim end · {end.toFixed(1)}s</label><input type="range" min=".1" max={Math.max(videoDuration, .1)} step=".1" value={end || videoDuration || .1} onChange={e => seekEnd(e.target.value)} className="w-full" /></div>
-              <div><p className="text-xs font-bold mb-2">Speed</p><div className="flex gap-2 flex-wrap">{[.5,.75,1,1.25,1.5,2].map(v => <button key={v} onClick={() => setSpeed(v)} className={`px-3 py-2 rounded-full border text-xs ${speed === v ? 'bg-purple-600 text-white' : ''}`}>{v}×</button>)}</div></div>
-              <div><div className="flex items-center justify-between"><span className="text-xs font-bold">Volume</span><span className="text-xs text-gray-500">{Math.round(volume * 100)}%</span></div><div className="flex items-center gap-2"><Volume2 className="w-4 h-4" /><input type="range" min="0" max="1" step=".05" value={volume} onChange={e => setVolume(Number(e.target.value))} className="flex-1" /><button onClick={() => setVolume(v => v ? 0 : 1)} className="p-2">{volume ? <Volume2 /> : <VolumeX />}</button></div></div>
-            </section>}
-
-            {activeTab === 'adjust' && <section className="space-y-4 rounded-2xl border p-4">
-              {[["Brightness", brightness, setBrightness, 40, 180, SunMedium],["Contrast", contrast, setContrast, 40, 180, Contrast],["Saturation", saturation, setSaturation, 0, 200, Droplets],["Blur", blur, setBlur, 0, 10, Sparkles],["Sharpen", sharpen, setSharpen, 0, 100, SlidersHorizontal],["Vignette", vignette, setVignette, 0, 100, Sparkles]].map(([label,val,setter,min,max,Icon]) => <label key={label} className="block text-xs font-semibold"><span className="flex justify-between"><span className="flex gap-1 items-center"><Icon className="w-3.5 h-3.5" />{label}</span><span>{Math.round(val)}</span></span><input type="range" min={min} max={max} step={label === 'Blur' ? .5 : 1} value={val} onChange={e => setter(Number(e.target.value))} className="w-full" /></label>)}
-              <div className="flex gap-2 flex-wrap pt-1"><button onClick={() => setRotation(r => (r + 90) % 360)} className="px-3 py-2 border rounded-full text-xs flex items-center gap-1"><RotateCw className="w-4 h-4" />Rotate</button><button onClick={() => setFlipX(v => !v)} className="px-3 py-2 border rounded-full text-xs flex items-center gap-1"><FlipHorizontal className="w-4 h-4" />Flip H</button><button onClick={() => setFlipY(v => !v)} className="px-3 py-2 border rounded-full text-xs flex items-center gap-1"><FlipVertical className="w-4 h-4" />Flip V</button></div>
-            </section>}
-
-            {activeTab === 'color' && <section className="space-y-4 rounded-2xl border p-4">
-              <p className="text-xs text-gray-500">Fine color controls are previewed live and baked into the saved edit.</p>
-              <label className="block text-xs font-semibold">Warmth <input type="range" min="0" max="100" value={warmth} onChange={e => setWarmth(Number(e.target.value))} className="w-full" /></label>
-              <label className="block text-xs font-semibold">Tint <input type="range" min="-30" max="30" value={tint} onChange={e => setTint(Number(e.target.value))} className="w-full" /></label>
-              <div className="grid grid-cols-3 gap-2"><button onClick={() => { setBrightness(108); setContrast(108); setSaturation(112); }} className="p-3 rounded-xl border text-xs font-semibold">Auto enhance</button><button onClick={() => { setBrightness(100); setContrast(100); setSaturation(100); setWarmth(0); setTint(0); }} className="p-3 rounded-xl border text-xs font-semibold">Neutral</button><button onClick={() => { setBrightness(96); setContrast(118); setSaturation(108); setVignette(24); }} className="p-3 rounded-xl border text-xs font-semibold">Cinematic</button></div>
-            </section>}
-
-            {activeTab === 'filters' && <section className="rounded-2xl border p-4"><div className="grid grid-cols-3 sm:grid-cols-4 gap-2">{Object.keys(FILTERS).map(name => <button key={name} onClick={() => setFilter(name)} className={`rounded-xl overflow-hidden border ${filter === name ? 'ring-2 ring-purple-500' : ''}`}><div className="h-16 bg-gradient-to-br from-purple-300 via-pink-300 to-orange-200" style={{ filter: FILTERS[name] }} /><span className="block p-2 text-xs font-semibold">{name}</span></button>)}</div></section>}
-
-            {activeTab === 'crop' && <section className="space-y-4 rounded-2xl border p-4">
-              <div><p className="text-xs font-bold mb-2">Aspect ratio</p><div className="flex gap-2 flex-wrap">{ASPECTS.map(a => <button key={a} onClick={() => setAspect(a)} className={`px-3 py-2 rounded-full border text-xs ${aspect === a ? 'bg-purple-600 text-white' : ''}`}>{a === 'free' ? 'Original' : a}</button>)}</div></div>
-              <label className="block text-xs font-semibold"><span className="flex justify-between"><span className="flex items-center gap-1"><ZoomIn className="w-3.5 h-3.5" />Zoom</span><span>{zoom.toFixed(2)}×</span></span><input type="range" min="1" max="3" step=".01" value={zoom} onChange={e => setZoom(Number(e.target.value))} className="w-full" /></label>
-              <div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold"><span className="flex items-center gap-1"><Move className="w-3.5 h-3.5" />Horizontal</span><input type="range" min="-100" max="100" value={offsetX} onChange={e => setOffsetX(Number(e.target.value))} className="w-full" /></label><label className="text-xs font-semibold"><span className="flex items-center gap-1"><Move className="w-3.5 h-3.5" />Vertical</span><input type="range" min="-100" max="100" value={offsetY} onChange={e => setOffsetY(Number(e.target.value))} className="w-full" /></label></div>
-              <button onClick={() => { setZoom(1); setOffsetX(0); setOffsetY(0); }} className="text-xs font-semibold text-purple-600">Center crop</button>
-            </section>}
-
-            {activeTab === 'text' && <section className="space-y-3 rounded-2xl border p-4">
-              <textarea value={overlayText} onChange={e => setOverlayText(e.target.value)} maxLength={160} placeholder="Add text, title, caption or watermark…" className="w-full border rounded-xl p-3 text-sm" />
-              <div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Size<input type="range" min="14" max="96" value={textSize} onChange={e => setTextSize(Number(e.target.value))} className="w-full" /></label><label className="text-xs font-semibold">Position<select value={textPosition} onChange={e => setTextPosition(e.target.value)} className="w-full mt-1 border rounded-lg p-2"><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label></div>
-              <div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Align<select value={textAlign} onChange={e => setTextAlign(e.target.value)} className="w-full mt-1 border rounded-lg p-2"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label><label className="text-xs font-semibold">Text color<div className="mt-1 flex items-center gap-2 border rounded-lg p-1"><input type="color" value={textColor} onChange={e => setTextColor(e.target.value)} className="w-9 h-8" /><span className="text-xs">{textColor}</span></div></label></div>
-              <div className="flex gap-2 flex-wrap"><button onClick={() => setTextBackground(v => !v)} className={`px-3 py-2 rounded-full border text-xs ${textBackground ? 'bg-gray-900 text-white' : ''}`}>Background</button>{[0,1,2,3].map(v => <button key={v} onClick={() => setTextStroke(v)} className={`px-3 py-2 rounded-full border text-xs ${textStroke === v ? 'bg-gray-900 text-white' : ''}`}>Stroke {v}</button>)}</div>
-            </section>}
-
-            {error && <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3">{error}</div>}
-            {processing && <div className="rounded-xl bg-purple-50 border border-purple-100 text-purple-700 text-xs p-3">Processing your edit locally. Keep this editor open until Save edit finishes.</div>}
-          </div>
-        </div>
+  return <div className="fixed inset-0 z-[180] bg-black/80 flex items-end sm:items-center justify-center">
+    <div className="w-full max-w-4xl max-h-[96dvh] overflow-hidden bg-[#111] text-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col">
+      <div className="shrink-0 px-4 py-3 flex items-center gap-3 border-b border-white/10 bg-[#151515]">
+        <button onClick={onClose} disabled={processing} className="p-2 rounded-full hover:bg-white/10"><X/></button>
+        <div className="flex-1 min-w-0"><b className="block truncate">{type==='image'?'Photo Editor':'Video Editor'}</b><span className="text-[11px] text-white/50">Pro edit • Save keeps the file ready for Post / Reels / Vibe / Chat</span></div>
+        <button onClick={reset} disabled={processing} className="p-2 rounded-full hover:bg-white/10" title="Reset"><RotateCcw className="w-4 h-4"/></button>
+        <button onClick={apply} disabled={processing} className="px-4 py-2 rounded-full bg-white text-black font-bold text-sm flex items-center gap-1">{processing?'Exporting…':<><Check className="w-4 h-4"/>Save edit</>}</button>
       </div>
-    </div>
-  );
-}
 
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative bg-black min-h-[34vh] sm:min-h-[48vh] flex items-center justify-center overflow-hidden">
+          {type==='image' ? <img ref={imageRef} src={url} alt="Editing preview" className="max-h-[52vh] max-w-[94vw] object-contain select-none" style={{filter:visualFilter,transform:previewTransform}}/> : <div className="relative w-full flex justify-center"><video ref={videoRef} src={url} playsInline preload="metadata" className="max-h-[52vh] max-w-full object-contain" style={{filter:visualFilter,transform:previewTransform}} onLoadedMetadata={e=>{const d=e.currentTarget.duration||0;setDuration(d);if(!end)setEnd(d);}} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)}/><canvas ref={canvasRef} className="hidden"/><button onClick={()=>{const v=videoRef.current;if(!v)return;if(v.paused){v.play();}else v.pause();}} className="absolute bottom-4 left-4 w-12 h-12 rounded-full bg-black/65 border border-white/20 flex items-center justify-center">{playing?<Pause/>:<Play/>}</button></div>}
+          {vignette>0 && <div className="pointer-events-none absolute inset-0" style={{background:'radial-gradient(circle, transparent 45%, rgba(0,0,0,.55) 100%)',opacity:vignette/100}}/>}
+          {text.trim() && <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl font-bold text-center whitespace-pre-wrap ${textPosition==='top'?'top-6':textPosition==='center'?'top-1/2 -translate-y-1/2':'bottom-6'}`} style={{color:textColor,WebkitTextStroke:`${textStroke}px #000`,background:textBg?'rgba(0,0,0,.55)':'transparent',fontSize:Math.max(14,textSize*.45)}}>{text}</div>}
+        </div>
+
+        {type==='video' && <div className="px-4 py-3 bg-[#181818] border-y border-white/10"><div className="flex items-center justify-between text-[11px] text-white/60 mb-2"><span>{start.toFixed(1)}s</span><span>{duration.toFixed(1)}s</span><span>{Math.max(0,(end-start)).toFixed(1)}s clip</span></div><div className="relative"><input type="range" min="0" max={Math.max(duration,.1)} step=".05" value={start} onChange={e=>previewSeek(e.target.value)} className="w-full accent-white"/><input type="range" min=".05" max={Math.max(duration,.1)} step=".05" value={end||duration||.05} onChange={e=>previewEnd(e.target.value)} className="w-full accent-white"/></div></div>}
+
+        <div className="px-3 pt-3 bg-[#151515] overflow-x-auto"><div className="flex gap-2 min-w-max pb-2">{tabs.map(([key,Icon,label])=><button key={key} onClick={()=>setTab(key)} className={`min-w-[72px] px-3 py-2 rounded-xl text-[11px] font-semibold flex flex-col items-center gap-1 ${tab===key?'bg-white text-black':'bg-white/5 text-white/65'}`}><Icon className="w-5 h-5"/><span>{label}</span></button>)}</div></div>
+
+        <div className="p-4 bg-[#151515] min-h-[250px]">
+          {tab==='trim' && type==='video' && <section className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Start<input type="range" min="0" max={Math.max(duration,.1)} step=".05" value={start} onChange={e=>previewSeek(e.target.value)} className="w-full"/></label><label className="text-xs font-semibold">End<input type="range" min=".05" max={Math.max(duration,.1)} step=".05" value={end||duration||.05} onChange={e=>previewEnd(e.target.value)} className="w-full"/></label></div><div className="flex flex-wrap gap-2"><button onClick={()=>setRotation(r=>(r+90)%360)} className="tool"><RotateCw/>Rotate</button><button onClick={()=>setFlipX(v=>!v)} className="tool"><FlipHorizontal/>Flip H</button><button onClick={()=>setFlipY(v=>!v)} className="tool"><FlipVertical/>Flip V</button><button onClick={()=>setVolume(v=>v?0:1)} className="tool">{volume?<Volume2/>:<VolumeX/>}{volume?'Sound':'Muted'}</button></div></section>}
+          {tab==='adjust' && <section className="space-y-4"><div className="grid sm:grid-cols-2 gap-4">{[['Brightness',brightness,setBrightness,40,180],['Contrast',contrast,setContrast,40,180],['Saturation',saturation,setSaturation,0,200],['Blur',blur,setBlur,0,8],['Sharpen',sharpen,setSharpen,0,100],['Warmth',warmth,setWarmth,-100,100],['Tint',tint,setTint,-30,30],['Vignette',vignette,setVignette,0,100]].map(([label,val,setter,min,max])=><label key={label} className="text-xs font-semibold text-white/80">{label}<span className="float-right text-white/45">{typeof val==='number'?Math.round(val):val}</span><input type="range" min={min} max={max} step={label==='Blur'?.5:1} value={val} onChange={e=>setter(Number(e.target.value))} className="w-full accent-white"/></label>)}</div><div className="flex flex-wrap gap-2"><button className="tool" onClick={()=>setRotation(r=>(r+90)%360)}><RotateCw/>Rotate</button><button className="tool" onClick={()=>setFlipX(v=>!v)}><FlipHorizontal/>Flip H</button><button className="tool" onClick={()=>setFlipY(v=>!v)}><FlipVertical/>Flip V</button></div></section>}
+          {tab==='filters' && <section><div className="grid grid-cols-3 sm:grid-cols-5 gap-3">{Object.keys(FILTERS).map(name=><button key={name} onClick={()=>setFilter(name)} className={`rounded-2xl overflow-hidden border border-white/10 bg-white/5 ${filter===name?'ring-2 ring-white':''}`}><div className="h-20 bg-gradient-to-br from-purple-300 via-pink-300 to-orange-200" style={{filter:FILTERS[name]}}/><span className="block p-2 text-xs font-semibold">{name}</span></button>)}</div></section>}
+          {tab==='crop' && <section className="space-y-5"><div><p className="text-xs font-semibold text-white/60 mb-2">Canvas ratio</p><div className="flex flex-wrap gap-2">{RATIOS.map(([value,label])=><button key={value} onClick={()=>setAspect(value)} className={`px-4 py-2 rounded-full border text-sm ${aspect===value?'bg-white text-black border-white':'border-white/15 text-white/70'}`}>{label}</button>)}</div></div><div><p className="text-xs font-semibold text-white/60 mb-2">Frame</p><div className="flex gap-2"><button onClick={()=>setFitMode('fill')} className={`px-4 py-2 rounded-full border ${fitMode==='fill'?'bg-white text-black':'border-white/15 text-white/70'}`}>Fill</button><button onClick={()=>setFitMode('blur')} className={`px-4 py-2 rounded-full border ${fitMode==='blur'?'bg-white text-black':'border-white/15 text-white/70'}`}>Blur background</button></div></div><label className="block text-xs font-semibold">Zoom {zoom.toFixed(2)}×<input type="range" min="1" max="3" step=".01" value={zoom} onChange={e=>setZoom(Number(e.target.value))} className="w-full accent-white"/></label><div className="grid grid-cols-2 gap-4"><label className="text-xs font-semibold flex items-center gap-2"><Move className="w-4 h-4"/>Horizontal<input type="range" min="-100" max="100" value={posX} onChange={e=>setPosX(Number(e.target.value))} className="flex-1 accent-white"/></label><label className="text-xs font-semibold flex items-center gap-2"><Move className="w-4 h-4 rotate-90"/>Vertical<input type="range" min="-100" max="100" value={posY} onChange={e=>setPosY(Number(e.target.value))} className="flex-1 accent-white"/></label></div></section>}
+          {tab==='text' && <section className="space-y-4"><textarea value={text} onChange={e=>setText(e.target.value)} maxLength={160} placeholder="Type text…" className="w-full min-h-24 bg-white/5 border border-white/10 rounded-2xl p-3 outline-none"/><div className="grid grid-cols-2 gap-4"><label className="text-xs font-semibold">Size<input type="range" min="16" max="88" value={textSize} onChange={e=>setTextSize(Number(e.target.value))} className="w-full accent-white"/></label><label className="text-xs font-semibold">Position<select value={textPosition} onChange={e=>setTextPosition(e.target.value)} className="w-full mt-1 bg-white/5 border border-white/10 rounded-lg p-2"><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label></div><div className="flex items-center gap-3"><Palette className="w-4 h-4"/><input type="color" value={textColor} onChange={e=>setTextColor(e.target.value)} className="w-10 h-10 bg-transparent"/><label className="text-xs flex items-center gap-2"><input type="checkbox" checked={textBg} onChange={e=>setTextBg(e.target.checked)}/> Background</label></div><label className="text-xs font-semibold">Outline<input type="range" min="0" max="3" step="1" value={textStroke} onChange={e=>setTextStroke(Number(e.target.value))} className="w-full accent-white"/></label></section>}
+          {tab==='music' && type==='video' && <section className="space-y-4"><input ref={musicInputRef} type="file" accept="audio/*" className="hidden" onChange={e=>setMusicFile(e.target.files?.[0]||null)}/><button onClick={()=>musicInputRef.current?.click()} className="w-full p-4 rounded-2xl border border-dashed border-white/20 bg-white/5 flex items-center justify-center gap-2"><Music2/> {musicFile?musicFile.name:'Add music from device'}</button>{musicFile&&<><label className="text-xs font-semibold">Music volume<input type="range" min="0" max="1" step=".01" value={musicVolume} onChange={e=>setMusicVolume(Number(e.target.value))} className="w-full accent-white"/></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={musicLoop} onChange={e=>setMusicLoop(e.target.checked)}/> Loop music to fill the clip</label></>}</section>}
+          {tab==='speed' && type==='video' && <section><p className="text-xs text-white/55 mb-3">Playback speed</p><div className="grid grid-cols-4 gap-2">{SPEEDS.map(v=><button key={v} onClick={()=>setSpeed(v)} className={`py-3 rounded-xl border text-sm font-semibold ${speed===v?'bg-white text-black border-white':'border-white/10 bg-white/5 text-white/70'}`}>{v}×</button>)}</div><div className="mt-5 p-3 rounded-2xl bg-white/5 text-xs text-white/55 flex gap-2"><Wand2 className="w-4 h-4 shrink-0"/> Speed is applied during export. Trim, filters, crop, text and audio stay synchronized to the selected clip.</div></section>}
+        </div>
+        {error && <div className="mx-4 mb-4 rounded-2xl bg-red-500/15 border border-red-400/20 text-red-200 text-sm p-3">{error}</div>}
+      </div>
+      <style>{`.tool{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .8rem;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.05);font-size:.8rem;font-weight:600}.tool svg{width:16px;height:16px}`}</style>
+    </div>
+  </div>;
+}
 export default MediaEditor;
