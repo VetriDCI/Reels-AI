@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Search, X, Clock3, Trash2, ArrowUpRight, ArrowLeft } from 'lucide-react';
-import { searchAPI, followAPI } from '../services/api';
+import api, { followAPI } from '../services/api';
 
 const HISTORY_KEY = 'ra_social_search_history';
 const MAX_HISTORY = 12;
@@ -53,7 +53,7 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
     setError('');
     try {
       // A normal search is one unified search. There are no All/User/Post/Hashtag tabs.
-      const response = await searchAPI.search(q, 'all');
+      const response = await api.get('/search', { params: { query: q, type: 'all' } });
       const data = response.data?.data || {};
       setResults({
         users: Array.isArray(data.users) ? data.users : [],
@@ -63,7 +63,7 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
     } catch (error) {
       console.error('Search failed:', error);
       setResults({ users: [], posts: [], hashtags: [] });
-      setError(error?.response?.data?.message || error?.message || 'Search is temporarily unavailable. Please try again.');
+      setError(error?.response?.data?.message || 'Search is temporarily unavailable. Please try again.');
     } finally { setLoading(false); }
   };
 
