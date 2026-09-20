@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   User, Calendar, Briefcase, Wallet, Folder, Shield, Eye, Bell, Bookmark, Flag,
   Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Film, Users2, DollarSign, PlusCircle, LockKeyhole, BarChart3, Clapperboard, FileText, Clock3, Megaphone, Camera
@@ -53,10 +53,24 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const avatarInputRef = React.useRef(null);
+  const avatarInputRef = useRef(null);
+  const meHistoryReadyRef = useRef(false);
+  const suppressMeHistoryRef = useRef(false);
 
   useEffect(() => {
     loadUser();
+    const initialView = window.history.state?.raMeView || 'main';
+    setView(initialView);
+    window.history.replaceState({ ...(window.history.state || {}), raTab: 'me', raMeView: initialView }, '', window.location.href);
+    meHistoryReadyRef.current = true;
+    const onPopState = (event) => {
+      const nextView = event.state?.raMeView || 'main';
+      suppressMeHistoryRef.current = true;
+      setView(nextView);
+      window.setTimeout(() => { suppressMeHistoryRef.current = false; }, 0);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   const loadUser = async () => {
@@ -70,7 +84,17 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
     }
   };
 
-  const back = () => setView('main');
+  const goView = (nextView) => {
+    const viewName = nextView || 'main';
+    setView(viewName);
+    if (meHistoryReadyRef.current && !suppressMeHistoryRef.current) {
+      window.history.pushState({ ...(window.history.state || {}), raTab: 'me', raMeView: viewName }, '', window.location.href);
+    }
+  };
+  const back = () => {
+    if (window.history.state?.raMeView && window.history.state.raMeView !== 'main') window.history.back();
+    else setView('main');
+  };
   const hasChannel = Boolean(user?.channelNumber);
 
   const handleAvatarChange = async (event) => {
@@ -115,14 +139,14 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
     <AnalyticsHubPage
       user={user}
       onBack={back}
-      onOpenViews={() => setView('totalViews')}
-      onOpenFollowers={() => setView('followers')}
-      onOpenRevenue={() => setView('adRevenue')}
+      onOpenViews={() => goView('totalViews')}
+      onOpenFollowers={() => goView('followers')}
+      onOpenRevenue={() => goView('adRevenue')}
     />
   );
-  if (view === 'totalViews') return <TotalViewsPage user={user} onBack={() => setView('analytics')} />;
-  if (view === 'followers') return <FollowersAnalyticsPage user={user} onBack={() => setView('analytics')} />;
-  if (view === 'adRevenue') return <AdRevenuePage user={user} onBack={() => setView('analytics')} />;
+  if (view === 'totalViews') return <TotalViewsPage user={user} onBack={() => goView('analytics')} />;
+  if (view === 'followers') return <FollowersAnalyticsPage user={user} onBack={() => goView('analytics')} />;
+  if (view === 'adRevenue') return <AdRevenuePage user={user} onBack={() => goView('analytics')} />;
   if (view === 'scheduler') return <PostSchedulerPage onBack={back} />;
   if (view === 'brandCollab') return <BrandCollabPage user={user} onBack={back} />;
   if (view === 'billing') return <BillingEarningsPage user={user} onBack={back} />;
@@ -187,7 +211,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
             <p className="text-2xl font-bold text-gray-800">{followersCount}</p>
           </div>
           <button
-            onClick={() => hasChannel && setView('analytics')}
+            onClick={() => hasChannel && goView('analytics')}
             disabled={!hasChannel}
             className={`col-span-2 bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between text-left ${!hasChannel ? 'opacity-60 cursor-not-allowed' : ''}`}
           >
@@ -245,7 +269,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
         )}
 
         {hasChannel && (
-          <button onClick={() => setView('creator-dashboard')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-blue-50 border border-blue-100">
+          <button onClick={() => goView('creator-dashboard')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-blue-50 border border-blue-100">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center"><BarChart3 className="w-5 h-5 text-white" /></div>
             <div className="flex-1"><p className="font-bold text-gray-800">Creator Dashboard</p><p className="text-xs text-gray-500">Live content, views, followers, earnings & creator tools</p></div>
             <ChevronRight className="w-4 h-4 text-gray-300" />
@@ -253,7 +277,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
         )}
 
         {hasChannel && (
-          <button onClick={() => setView('creator-ads')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-purple-50 border border-purple-100">
+          <button onClick={() => goView('creator-ads')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-purple-50 border border-purple-100">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"><Megaphone className="w-5 h-5 text-white" /></div>
             <div className="flex-1"><p className="font-bold text-gray-800">Creator Ads</p><p className="text-xs text-gray-500">Create, upload, edit and manage ads — shown on Home + Reels</p></div>
             <ChevronRight className="w-4 h-4 text-gray-300" />
@@ -272,13 +296,13 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
           <ChevronRight className="w-4 h-4 text-gray-300" />
         </button>
 
-        <button onClick={() => setView('saved')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-5 flex items-center gap-3 text-left hover:bg-purple-50">
+        <button onClick={() => goView('saved')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-5 flex items-center gap-3 text-left hover:bg-purple-50">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center"><Bookmark className="w-5 h-5 text-white" /></div>
           <div className="flex-1"><p className="font-bold text-gray-800">Saved</p><p className="text-xs text-gray-500">Your saved posts and reels</p></div>
           <ChevronRight className="w-4 h-4 text-gray-300" />
         </button>
 
-        <button onClick={() => setView('watch-history')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-5 flex items-center gap-3 text-left hover:bg-blue-50">
+        <button onClick={() => goView('watch-history')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-5 flex items-center gap-3 text-left hover:bg-blue-50">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center"><Clock3 className="w-5 h-5 text-white" /></div>
           <div className="flex-1"><p className="font-bold text-gray-800">Watch History</p><p className="text-xs text-gray-500">Videos, reels & posts you viewed — last 30 days</p></div>
           <ChevronRight className="w-4 h-4 text-gray-300" />
@@ -291,7 +315,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
             return (
               <button
                 key={key}
-                onClick={() => enabled && setView(key)}
+                onClick={() => enabled && goView(key)}
                 disabled={!enabled}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left ${!enabled ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
@@ -308,7 +332,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
         <p className="text-xs text-gray-400 uppercase font-semibold mb-2">Account Settings</p>
         <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-100 mb-4">
           {accountMenuItems.map(({ key, label, icon: Icon, color }) => (
-            <button key={key} onClick={() => setView(key)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+            <button key={key} onClick={() => goView(key)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
               <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${color} flex items-center justify-center`}>
                 <Icon className="w-4 h-4 text-white" />
               </div>
