@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell } from 'lucide-react';
@@ -45,20 +45,60 @@ function AppContent() {
   const [draftToEdit, setDraftToEdit] = useState(null);
   const [hashtagName, setHashtagName] = useState('');
   const [reportHistory, setReportHistory] = useState(false);
+  const historyReadyRef = useRef(false);
+  const suppressHistoryRef = useRef(false);
+
+  // Keep the app's tab navigation in the browser history so Android/iOS
+  // hardware back returns to the previous in-app screen instead of leaving
+  // the SPA.
+  const navigateTab = (nextTab, options = {}) => {
+    const tab = nextTab || 'home';
+    setActiveTab(tab);
+    if (!historyReadyRef.current) return;
+    if (options.replace) {
+      window.history.replaceState({ ...(window.history.state || {}), raTab: tab }, '', window.location.href);
+    } else if (!suppressHistoryRef.current) {
+      window.history.pushState({ ...(window.history.state || {}), raTab: tab }, '', window.location.href);
+    }
+  };
+
+  useEffect(() => {
+    const initial = window.history.state?.raTab || 'home';
+    window.history.replaceState({ ...(window.history.state || {}), raTab: initial }, '', window.location.href);
+    historyReadyRef.current = true;
+    const onPopState = (event) => {
+      const previous = event.state?.raTab || 'home';
+      suppressHistoryRef.current = true;
+      setShowCreateModal(false);
+      setDraftToEdit(null);
+      setActiveTab(previous);
+      window.setTimeout(() => { suppressHistoryRef.current = false; }, 0);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (!historyReadyRef.current || suppressHistoryRef.current) return;
+    const current = window.history.state?.raTab;
+    if (current !== activeTab) {
+      window.history.pushState({ ...(window.history.state || {}), raTab: activeTab }, '', window.location.href);
+    }
+  }, [activeTab]);
 
   const openSearch = (query = '') => {
     setSearchSource(activeTab === 'search' ? 'home' : activeTab);
     setSearchQuery(query.trim());
-    setActiveTab('search');
+    navigateTab('search');
   };
 
-  const openProfile = (id) => { setPublicProfileId(id); setActiveTab('public-profile'); };
+  const openProfile = (id) => { setPublicProfileId(id); navigateTab('public-profile'); };
 
-  const openHashtag = (name) => { setHashtagName(String(name || '').replace(/^#/, '')); setActiveTab('hashtag'); };
+  const openHashtag = (name) => { setHashtagName(String(name || '').replace(/^#/, '')); navigateTab('hashtag'); };
 
   const openReel = (post) => {
     setReelTarget(post);
-    setActiveTab('reels');
+    navigateTab('reels');
   };
 
   useEffect(() => {
@@ -94,7 +134,7 @@ function AppContent() {
     const postId = new URLSearchParams(window.location.search).get('post');
     if (postId) {
       setReelTarget({ id: postId });
-      setActiveTab('reels');
+      navigateTab('reels');
     }
   }, []);
 
@@ -128,34 +168,39 @@ function AppContent() {
       {!hideTopBar && (
         <TopBar
           logout={logout}
-          onNotifications={() => setActiveTab('notifications')}
+          onNotifications={() => navigateTab('notifications')}
           unreadNotificationCount={unreadNotificationCount}
           onSearch={openSearch}
-          onProfile={() => setActiveTab('me')}
+          onProfile={() => navigateTab('me')}
         />
       )}
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} />}
-        {activeTab === 'reels' && <ReelsPage onNotifications={() => setActiveTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} initialPostId={reelTarget?.id} />}
+        {activeTab === 'reels' && <ReelsPage onNotifications={() => navigateTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} initialPostId={reelTarget?.id} />}
         {activeTab === 'ai' && <AIFeatures />}
         {activeTab === 'chat' && <ChatPage />}
-        {activeTab === 'me' && <MePage onLogout={logout} onOpenReportHistory={() => setActiveTab('report-history')} onBack={() => setActiveTab('home')} onOpenDrafts={() => setActiveTab('drafts')} />}
+        {activeTab === 'me' && <MePage onLogout={logout} onOpenReportHistory={() => navigateTab('report-history')} onBack={() => navigateTab('home')} onOpenDrafts={() => navigateTab('drafts')} />}
         {activeTab === 'notifications' && <NotificationsPage />}
-        {activeTab === 'search' && <SearchPage initialQuery={searchQuery} onBack={() => setActiveTab(searchSource || 'home')} onOpenProfile={openProfile} onOpenHashtag={openHashtag} />}
-        {activeTab === 'saved' && <SavedPostsPage onBack={() => setActiveTab(savedReturnTab)} />}
-        {activeTab === 'drafts' && <DraftsPage userId={user?.id} onBack={() => setActiveTab('me')} onEdit={(draft) => { setDraftToEdit(draft); setShowCreateModal(true); setActiveTab('home'); }} />}
-        {activeTab === 'report-history' && <ReportHistoryPage onBack={() => setActiveTab('me')} />}
-        {activeTab === 'watch-history' && <WatchHistoryPage onBack={() => setActiveTab('me')} />}
-        {activeTab === 'hashtag' && <HashtagPage name={hashtagName} onBack={() => setActiveTab(searchSource || 'home')} onOpenReel={openReel} />}
-        {activeTab === 'public-profile' && <PublicProfilePage userId={publicProfileId} onBack={() => setActiveTab(searchSource || 'home')} />}
+        {activeTab === 'search' && <SearchPage initialQuery={searchQuery} onBack={() => navigateTab(searchSource || 'home')} onOpenProfile={openProfile} onOpenHashtag={openHashtag} />}
+        {activeTab === 'saved' && <SavedPostsPage onBack={() => navigateTab(savedReturnTab)} />}
+        {activeTab === 'drafts' && <DraftsPage userId={user?.id} onBack={() => navigateTab('me')} onEdit={(draft) => { setDraftToEdit(draft); setShowCreateModal(true); navigateTab('home'); }} />}
+        {activeTab === 'report-history' && <ReportHistoryPage onBack={() => navigateTab('me')} />}
+        {activeTab === 'watch-history' && <WatchHistoryPage onBack={() => navigateTab('me')} />}
+        {activeTab === 'hashtag' && <HashtagPage name={hashtagName} onBack={() => navigateTab(searchSource || 'home')} onOpenReel={openReel} />}
+        {activeTab === 'public-profile' && <PublicProfilePage userId={publicProfileId} onBack={() => navigateTab(searchSource || 'home')} />}
       </main>
 
       {showCreateModal && (
         <CreatePostModal userId={user?.id} isCreator={Boolean(user?.channelNumber)} initialDraft={draftToEdit} onClose={() => { setShowCreateModal(false); setDraftToEdit(null); }} onDraftSaved={() => {}} onPostCreated={() => setFeedRefresh((prev) => prev + 1)} />
       )}
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} setShowCreateModal={setShowCreateModal} isFullScreenTab={isFullScreenTab} />
+      <BottomNav activeTab={activeTab} setActiveTab={navigateTab} setShowCreateModal={setShowCreateModal} isFullScreenTab={isFullScreenTab} />
+      {activeTab === 'me' && (
+        <button onClick={() => openSearch('')} aria-label="Search" className="fixed right-4 top-4 z-[70] w-11 h-11 rounded-full bg-white/95 shadow-lg border flex items-center justify-center">
+          <Search className="w-5 h-5 text-gray-700" />
+        </button>
+      )}
       <InstallPrompt />
     </div>
   );
