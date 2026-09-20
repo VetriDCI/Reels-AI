@@ -97,7 +97,14 @@ export const payoutAPI = {
 };
 
 export const searchAPI = {
-  search: (query, type = 'all') => api.get('/search', { params: { query: String(query || '').trim(), type } })
+  search: (query, type = 'all') => {
+    const value = String(query || '').trim();
+    if (!value) return Promise.reject(new Error('Search query is required'));
+    return api.get('/search', {
+      params: { query: value, q: value, type: String(type || 'all').toLowerCase() },
+      timeout: 15000
+    });
+  }
 };
 
 export const notificationAPI = {
