@@ -216,7 +216,7 @@ function TopBar({ logout, onNotifications, unreadNotificationCount, onSearch, on
         >
           RA Social
         </div>
-        <button onClick={onSearch} className="relative flex-1 text-left min-w-0" aria-label="Search">
+        <button onClick={() => onSearch('')} className="relative flex-1 text-left min-w-0" aria-label="Search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
           <span className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500">Search</span>
         </button>
