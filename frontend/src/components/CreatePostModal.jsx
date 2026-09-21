@@ -107,8 +107,8 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   };
 
   const applyEditedMedia = (editedFile) => {
-    const normalizedFile = mediaKind === 'video' && !editedFile.type?.startsWith('video/')
-      ? new File([editedFile], editedFile.name?.replace(/\.[^.]+$/, '') + '.webm', { type: 'video/webm', lastModified: Date.now() })
+    const normalizedFile = mediaKind === 'video'
+      ? new File([editedFile], `${(file?.name || 'video').replace(/\.[^.]+$/, '')}-edited.webm`, { type: editedFile.type?.startsWith('video/') ? editedFile.type : 'video/webm', lastModified: Date.now() })
       : editedFile;
     setFiles(prev => prev.map((item, i) => i === activeIndex ? normalizedFile : item));
     setFile(normalizedFile);
@@ -151,10 +151,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
       if (selectedFiles.length) {
         mediaItems = await Promise.all(selectedFiles.map(async selectedFile => {
           const upload = await uploadAPI.media(selectedFile);
-          return {
-            mediaUrl: upload.data.data.url,
-            mediaType: selectedFile.type?.startsWith('video/') ? 'video' : upload.data.data.mediaType
-          };
+          return { mediaUrl: upload.data.data.url, mediaType: selectedFile.type?.startsWith('video/') ? 'video' : upload.data.data.mediaType };
         }));
       }
       const primary = mediaItems[0] || { mediaUrl: initialDraft?.mediaUrl || null, mediaType: initialDraft?.mediaType || 'text' };
@@ -176,10 +173,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     try {
       const items = selectedFiles.length ? await Promise.all(selectedFiles.map(async (selectedFile) => {
         const upload = await uploadAPI.media(selectedFile);
-        return {
-            mediaUrl: upload.data.data.url,
-            mediaType: selectedFile.type?.startsWith('video/') ? 'video' : upload.data.data.mediaType
-          };
+        return { mediaUrl: upload.data.data.url, mediaType: selectedFile.type?.startsWith('video/') ? 'video' : upload.data.data.mediaType };
       })) : [{ mediaUrl: initialDraft?.mediaUrl || null, mediaType: initialDraft?.mediaType || 'text' }];
       setUploadStage('publishing');
       for (const item of items) {

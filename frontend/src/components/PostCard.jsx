@@ -58,10 +58,11 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
     const url = `${window.location.origin}/?post=${post.id}`;
     try { if (navigator.share) await navigator.share({ title: 'RA Social post', text: post.content || 'Check this post', url }); else await navigator.clipboard.writeText(url); setSharing(true); setTimeout(() => setSharing(false), 1200); } catch {}
   };
+  const mediaLooksLikeVideo = Boolean(post.mediaType === 'video' || /\.(mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(post.mediaUrl || '') || /[?&]resource_type=video/i.test(post.mediaUrl || ''));
   const handleDownload = async () => {
     if (!post.mediaUrl || downloading) return;
     setDownloading(true);
-    const ext = post.mediaType === 'video' ? 'mp4' : 'jpg';
+    const ext = mediaLooksLikeVideo ? 'mp4' : 'jpg';
     try { await downloadMedia(post.mediaUrl, `ra-social-${post.id}.${ext}`, postAPI.download(post.id)); } finally { setDownloading(false); }
   };
   useEffect(() => { setSaved(Boolean(post._saved)); }, [post._saved]);
@@ -106,7 +107,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
 
       {post.content && <div className="px-4 pb-3"><p className="text-gray-800 whitespace-pre-wrap break-words">{post.content}</p></div>}
       {post.mediaUrl && <div className="px-4 pb-3">
-        {post.mediaType === 'video' ? (
+        {mediaLooksLikeVideo ? (
           <button type="button" onClick={() => { recordView(); onOpenReel?.(post); }} className="relative w-full max-h-[70vh] rounded-lg bg-black overflow-hidden block" aria-label="Open video in Reels">
             <video src={post.mediaUrl} playsInline preload="metadata" muted controls={false} className="w-full max-h-[70vh] object-contain bg-black pointer-events-none" />
             <span className="absolute inset-0 flex items-center justify-center bg-black/20"><span className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-8 h-8 text-gray-900 ml-1" fill="currentColor" /></span></span>

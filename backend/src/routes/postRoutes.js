@@ -35,20 +35,22 @@ router.get('/:id/download', async (req, res) => {
 router.post('/upload', protect, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
-  const isVideo = req.file.mimetype?.startsWith('video/');
-  const uploadedUrl = req.file.path || req.file.secure_url;
+  const isVideo = String(req.file.mimetype || '').toLowerCase().startsWith('video/');
+  const originalUrl = req.file.secure_url || req.file.path || req.file.url;
+  if (!originalUrl) return res.status(500).json({ success: false, message: 'Uploaded media URL was not returned by Cloudinary' });
 
-  // MediaEditor exports WebM in browsers that use MediaRecorder. Cloudinary
-  // can deliver that uploaded video as MP4, which is more reliable across
-  // the app's video players and keeps the normal upload path unchanged.
-  const playableUrl = isVideo && req.file.mimetype === 'video/webm'
-    ? uploadedUrl.replace('/video/upload/', '/video/upload/f_mp4/')
-    : uploadedUrl;
+  // Edited videos are exported by MediaRecorder as WebM on Android Chrome.
+  // Deliver those uploads as H.264/AAC MP4 so the same edited post plays
+  // reliably in the Home/Reels video players. Images and normal uploads keep
+  // their original URL unchanged.
+  const url = isVideo && /\.webm(?:[?#].*)?$/i.test(originalUrl)
+    ? originalUrl.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,ac_aac/')
+    : originalUrl;
 
   res.json({
     success: true,
     data: {
-      url: playableUrl,
+      url,
       mediaType: isVideo ? 'video' : 'image',
       publicId: req.file.filename || req.file.public_id || null,
       resourceType: req.file.resource_type || (isVideo ? 'video' : 'image')

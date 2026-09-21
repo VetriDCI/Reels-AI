@@ -65,7 +65,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   const loadReels = async () => {
     try {
       const res = await postAPI.getFeed(1, 50);
-      const videos = (res.data.data || []).filter(p => p.mediaType === 'video' && p.mediaUrl);
+      const videos = (res.data.data || []).filter(p => p.mediaUrl && (p.mediaType === 'video' || /\.(mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(p.mediaUrl) || /[?&]resource_type=video/i.test(p.mediaUrl)));
       // Creator Ad videos use the same original Reels experience. Normal image/text posts never enter Reels.
       // Creator Ad image/text remains on Home; Creator Ad video appears here automatically.
       setReels(videos);
