@@ -94,7 +94,7 @@ export const register = async (req, res) => {
 
     const user = await prisma.user.create({
       data: { username, email, passwordHash, fullName: fullName || username, phoneNumber: normalizedPhone || null },
-      select: { id: true, username: true, email: true, phoneNumber: true, fullName: true, avatarUrl: true, createdAt: true }
+      select: { id: true, username: true, email: true, phoneNumber: true, fullName: true, avatarUrl: true, role: true, status: true, channelNumber: true, channelName: true, channelCreatedAt: true, createdAt: true }
     });
 
     const { tokenId } = await createSessionForUser(user.id, req);
@@ -146,7 +146,7 @@ export const login = async (req, res) => {
     }
     const { tokenId } = await createSessionForUser(user.id, req);
     const token = jwt.sign({ userId: user.id, jti: tokenId }, process.env.JWT_SECRET, { expiresIn: '365d' });
-    res.json({ success: true, message: 'Login successful', data: { user: { id: user.id, username: user.username, email: user.email, phoneNumber: user.phoneNumber, fullName: user.fullName, avatarUrl: user.avatarUrl, bio: user.bio }, token } });
+    res.json({ success: true, message: 'Login successful', data: { user: { id: user.id, username: user.username, email: user.email, phoneNumber: user.phoneNumber, fullName: user.fullName, avatarUrl: user.avatarUrl, bio: user.bio, role: user.role, status: user.status, channelNumber: user.channelNumber, channelName: user.channelName, channelCreatedAt: user.channelCreatedAt }, token } });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ success: false, message: 'Login failed' });
@@ -162,7 +162,7 @@ export const verifyTwoFactorLogin = async (req, res) => {
     if(!valid) valid=await consumeBackupCode(user,code);
     if(!valid) return res.status(401).json({success:false,message:'Invalid authentication code'});
     const {tokenId}=await createSessionForUser(user.id,req); const token=jwt.sign({userId:user.id,jti:tokenId},process.env.JWT_SECRET,{expiresIn:'365d'});
-    res.json({success:true,message:'Login successful',data:{user:{id:user.id,username:user.username,email:user.email,phoneNumber:user.phoneNumber,fullName:user.fullName,avatarUrl:user.avatarUrl,bio:user.bio},token}});
+    res.json({success:true,message:'Login successful',data:{user:{id:user.id,username:user.username,email:user.email,phoneNumber:user.phoneNumber,fullName:user.fullName,avatarUrl:user.avatarUrl,bio:user.bio,role:user.role,status:user.status,channelNumber:user.channelNumber,channelName:user.channelName,channelCreatedAt:user.channelCreatedAt},token}});
   } catch(e){ return res.status(401).json({success:false,message:'Invalid or expired verification request'}); }
 };
 
@@ -182,7 +182,7 @@ export const getMe = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
       select: {
-        id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, earnings: true,
+        id: true, username: true, email: true, phoneNumber: true, fullName: true, bio: true, avatarUrl: true, role: true, status: true, earnings: true,
         monetizationStatus: true, monetizationAppliedAt: true, monetizationApprovedAt: true, createdAt: true,
         channelNumber: true, channelName: true, channelCreatedAt: true,
         posts: { select: { id: true, content: true, mediaUrl: true, mediaType: true, isCreatorAd: true, status: true, viewCount: true, createdAt: true, likes: { select: { id: true } }, comments: { select: { id: true } } }, orderBy: { createdAt: 'desc' } },
@@ -377,6 +377,11 @@ export const createChannel = async (req, res) => {
     });
 
     if (!existing) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+    if (currentUser?.status === 'blocked') return res.status(403).json({ success: false, message: 'Blocked users cannot create a channel' });
+    if (currentUser?.role !== 'user') return res.status(403).json({ success: false, message: 'Only normal users can create a creator channel' });
+
     if (existing.channelNumber) {
       return res.status(409).json({ success: false, message: 'You already have a creator channel', data: existing });
     }
