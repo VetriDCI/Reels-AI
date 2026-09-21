@@ -123,16 +123,17 @@ export default function ChatPage() {
   };
   const uploadAttachment = async (file) => { const form = new FormData(); form.append('file', file); const r = await api.post('/posts/upload', form); return r.data.data.url; };
   const sendReply = async () => {
-    if (!selectedChat || !replyingTo) return;
+    if (!selectedChat || !replyingTo || sendingRef.current) return;
+    sendingRef.current = true; setSending(true);
     const content = newMessage.trim(); const selected = galleryFiles.length ? galleryFiles : (galleryFile ? [galleryFile] : []);
-    if (!content && !selected.length) return;
+    if (!content && !selected.length) { sendingRef.current = false; setSending(false); return; }
     try {
       if (selected.length) {
         for (const file of selected) { const mediaUrl = await uploadAttachment(file); const r = await chatAPI.sendMessage(selectedChat.id, '', mediaUrl, replyingTo.id); setMessages(prev => prev.some(m => m.id === r.data.data.id) ? prev : [...prev, r.data.data]); }
         if (content) { const r = await chatAPI.sendMessage(selectedChat.id, content, null, replyingTo.id); setMessages(prev => prev.some(m => m.id === r.data.data.id) ? prev : [...prev, r.data.data]); }
       } else { const r = await chatAPI.sendMessage(selectedChat.id, content, null, replyingTo.id); setMessages(prev => prev.some(m => m.id === r.data.data.id) ? prev : [...prev, r.data.data]); }
       setNewMessage(''); setGalleryFile(null); setGalleryFiles([]); setReplyingTo(null); fetchChats();
-    } catch (e) { alert(e.response?.data?.message || 'Failed to send reply'); }
+    } catch (e) { alert(e.response?.data?.message || 'Failed to send reply'); } finally { sendingRef.current = false; setSending(false); }
   };
   const sendMessage = async () => {
     emitTyping(false); if (replyingTo) return sendReply();

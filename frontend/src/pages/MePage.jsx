@@ -95,6 +95,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
     if (window.history.state?.raMeView && window.history.state.raMeView !== 'main') window.history.back();
     else setView('main');
   };
+  const isNormalUser = (user?.role || 'user') === 'user';
   const hasChannel = Boolean(user?.channelNumber);
 
   const handleAvatarChange = async (event) => {
@@ -223,7 +224,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
           </button>
         </div>
 
-        {!hasChannel && (
+        {isNormalUser && !hasChannel && (
           <div className="bg-white rounded-2xl p-5 shadow-sm mb-5 border border-dashed border-purple-200">
             <div className="flex items-start gap-3">
               <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center shrink-0">
