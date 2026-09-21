@@ -34,13 +34,24 @@ router.get('/:id/download', async (req, res) => {
 });
 router.post('/upload', protect, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+
+  const isVideo = req.file.mimetype?.startsWith('video/');
+  const uploadedUrl = req.file.path || req.file.secure_url;
+
+  // MediaEditor exports WebM in browsers that use MediaRecorder. Cloudinary
+  // can deliver that uploaded video as MP4, which is more reliable across
+  // the app's video players and keeps the normal upload path unchanged.
+  const playableUrl = isVideo && req.file.mimetype === 'video/webm'
+    ? uploadedUrl.replace('/video/upload/', '/video/upload/f_mp4/')
+    : uploadedUrl;
+
   res.json({
     success: true,
     data: {
-      url: req.file.path || req.file.secure_url,
-      mediaType: req.file.mimetype?.startsWith('video/') ? 'video' : 'image',
+      url: playableUrl,
+      mediaType: isVideo ? 'video' : 'image',
       publicId: req.file.filename || req.file.public_id || null,
-      resourceType: req.file.resource_type || (req.file.mimetype?.startsWith('video/') ? 'video' : 'image')
+      resourceType: req.file.resource_type || (isVideo ? 'video' : 'image')
     }
   });
 });

@@ -139,32 +139,190 @@ function MediaEditor({ file, mediaType, onApply, onClose }) {
   const exportVideo = async () => {
     const video = videoRef.current;
     if (!video) throw new Error('Video is not ready.');
-    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || typeof video.captureStream !== 'function') throw new Error('This browser cannot export edited videos. Try Chrome on Android or another modern browser.');
-    const total = duration || video.duration || 0; if (!total) throw new Error('Video duration is not ready yet.');
-    const from = clamp(Number(start)||0,0,Math.max(0,total-.05)); const to = clamp(Number(end)||total,from+.05,total);
-    const bw = video.videoWidth||1280, bh=video.videoHeight||720, crop=getCrop(bw,bh), rotated=rotation%180!==0;
-    const cw=Math.max(2,Math.round(rotated?crop.h:crop.w)), ch=Math.max(2,Math.round(rotated?crop.w:crop.h));
-    const canvas=canvasRef.current||document.createElement('canvas'); canvas.width=cw; canvas.height=ch; const ctx=canvas.getContext('2d',{alpha:false});
-    const stream=canvas.captureStream(30); const source=video.captureStream();
-    let audioCtx=null, destination=null, videoSource=null, musicEl=null, musicSource=null;
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || typeof video.captureStream !== 'function') {
+      throw new Error('This browser cannot export edited videos. Try Chrome on Android or another modern browser.');
+    }
+
+    const total = duration || video.duration || 0;
+    if (!total) throw new Error('Video duration is not ready yet.');
+
+    const from = clamp(Number(start) || 0, 0, Math.max(0, total - .05));
+    const to = clamp(Number(end) || total, from + .05, total);
+    const bw = video.videoWidth || 1280;
+    const bh = video.videoHeight || 720;
+    const crop = getCrop(bw, bh);
+    const rotated = rotation % 180 !== 0;
+    const cw = Math.max(2, Math.round(rotated ? crop.h : crop.w));
+    const ch = Math.max(2, Math.round(rotated ? crop.w : crop.h));
+
+    const canvas = canvasRef.current || document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) throw new Error('Could not create video editor canvas.');
+
+    const stream = canvas.captureStream(30);
+    const source = video.captureStream();
+    let audioCtx = null, destination = null, videoSource = null, musicEl = null, musicSource = null;
+    let raf = null;
+    let stopped = false;
+
     try {
       if (source.getAudioTracks().length || musicUrl) {
-        audioCtx=new (window.AudioContext||window.webkitAudioContext)(); destination=audioCtx.createMediaStreamDestination();
-        videoSource=audioCtx.createMediaElementSource(video); const videoGain=audioCtx.createGain(); videoGain.gain.value=volume; videoSource.connect(videoGain).connect(destination); videoSource.connect(audioCtx.destination);
-        if (musicUrl) { musicEl=new Audio(musicUrl); musicEl.loop=musicLoop; musicEl.volume=1; musicSource=audioCtx.createMediaElementSource(musicEl); const musicGain=audioCtx.createGain(); musicGain.gain.value=musicVolume; musicSource.connect(musicGain).connect(destination); musicSource.connect(audioCtx.destination); }
-        destination.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
-      } else source.getAudioTracks().forEach(t=>stream.addTrack(t));
-      const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'';
-      const recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:8000000}:undefined); const chunks=[]; let raf=null; let stopped=false;
-      const done=new Promise((resolve,reject)=>{recorder.ondataavailable=e=>e.data?.size&&chunks.push(e.data);recorder.onerror=()=>reject(new Error('Video export failed. Please try again.'));recorder.onstop=resolve;});
-      const seekTo=()=>new Promise((resolve,reject)=>{const ok=()=>{video.removeEventListener('seeked',ok);resolve();};video.addEventListener('seeked',ok,{once:true});video.addEventListener('error',()=>reject(new Error('Could not seek video.')),{once:true});video.currentTime=from;});
-      await seekTo(); video.playbackRate=speed; video.volume=volume; if(audioCtx?.state==='suspended') await audioCtx.resume(); if(musicEl){musicEl.currentTime=0;}
-      recorder.start(200); await video.play(); if(musicEl) await musicEl.play().catch(()=>{}); setPlaying(true);
-      const draw=()=>{if(stopped)return;if(video.currentTime>=to||video.ended){stopped=true;video.pause();if(musicEl)musicEl.pause();if(recorder.state!=='inactive')recorder.stop();return;}ctx.save();ctx.clearRect(0,0,cw,ch);ctx.fillStyle='#111';ctx.fillRect(0,0,cw,ch);if(fitMode==='blur'){ctx.filter='blur(24px)';ctx.drawImage(video,0,0,cw,ch);ctx.filter='none';}ctx.translate(cw/2,ch/2);ctx.rotate(rotation*Math.PI/180);ctx.scale(flipX?-1:1,flipY?-1:1);ctx.filter=`${FILTERS[filter]||''} brightness(${brightness/100}) contrast(${contrast/100}) saturate(${saturation/100}) blur(${blur}px)`;const sx=(bw-crop.w)/2-(posX/100)*crop.w*.28,sy=(bh-crop.h)/2-(posY/100)*crop.h*.28;ctx.drawImage(video,sx,sy,crop.w,crop.h,-crop.w*zoom/2,-crop.h*zoom/2,crop.w*zoom,crop.h*zoom);ctx.restore();ctx.filter='none';applyColorLayers(ctx);drawText(ctx,cw,ch);raf=requestAnimationFrame(draw);};
-      draw(); await done; if(raf)cancelAnimationFrame(raf); if(!chunks.length)throw new Error('No edited video data was produced.');
-      return new File([new Blob(chunks,{type:mime||'video/webm'})],file.name.replace(/\.[^.]+$/,'')+'-edited.webm',{type:mime||'video/webm',lastModified:Date.now()});
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        destination = audioCtx.createMediaStreamDestination();
+
+        if (source.getAudioTracks().length) {
+          videoSource = audioCtx.createMediaElementSource(video);
+          const videoGain = audioCtx.createGain();
+          videoGain.gain.value = volume;
+          videoSource.connect(videoGain).connect(destination);
+          videoSource.connect(audioCtx.destination);
+        }
+
+        if (musicUrl) {
+          musicEl = new Audio(musicUrl);
+          musicEl.loop = musicLoop;
+          musicEl.volume = 1;
+          musicSource = audioCtx.createMediaElementSource(musicEl);
+          const musicGain = audioCtx.createGain();
+          musicGain.gain.value = musicVolume;
+          musicSource.connect(musicGain).connect(destination);
+          musicSource.connect(audioCtx.destination);
+        }
+
+        destination.stream.getAudioTracks().forEach(track => stream.addTrack(track));
+      }
+
+      // Prefer WebM because it is the broadly supported MediaRecorder output
+      // on Android Chrome. The upload layer receives an explicit video MIME type.
+      const mime = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ].find(candidate => MediaRecorder.isTypeSupported(candidate)) || '';
+
+      const recorder = new MediaRecorder(
+        stream,
+        mime ? { mimeType: mime, videoBitsPerSecond: 8000000 } : undefined
+      );
+      const chunks = [];
+
+      const done = new Promise((resolve, reject) => {
+        recorder.ondataavailable = event => {
+          if (event.data?.size) chunks.push(event.data);
+        };
+        recorder.onerror = () => reject(new Error('Video export failed. Please try again.'));
+        recorder.onstop = resolve;
+      });
+
+      const seekTo = () => new Promise((resolve, reject) => {
+        const onSeeked = () => resolve();
+        const onError = () => reject(new Error('Could not seek video.'));
+        video.addEventListener('seeked', onSeeked, { once: true });
+        video.addEventListener('error', onError, { once: true });
+        video.currentTime = from;
+      });
+
+      await seekTo();
+      video.playbackRate = speed;
+      video.volume = volume;
+
+      if (audioCtx?.state === 'suspended') await audioCtx.resume();
+      if (musicEl) {
+        musicEl.currentTime = 0;
+      }
+
+      const draw = () => {
+        if (stopped) return;
+
+        const current = video.currentTime;
+        if (current >= to || video.ended) {
+          // Draw the last selected frame before stopping the recorder so a
+          // short clip never becomes an empty/truncated upload.
+          ctx.save();
+          ctx.clearRect(0, 0, cw, ch);
+          ctx.fillStyle = '#111';
+          ctx.fillRect(0, 0, cw, ch);
+          if (fitMode === 'blur') {
+            ctx.filter = 'blur(24px)';
+            ctx.drawImage(video, 0, 0, cw, ch);
+            ctx.filter = 'none';
+          }
+          ctx.translate(cw / 2, ch / 2);
+          ctx.rotate(rotation * Math.PI / 180);
+          ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+          ctx.filter = `${FILTERS[filter] || ''} brightness(${brightness / 100}) contrast(${contrast / 100}) saturate(${saturation / 100}) blur(${blur}px)`;
+          const sx = (bw - crop.w) / 2 - (posX / 100) * crop.w * .28;
+          const sy = (bh - crop.h) / 2 - (posY / 100) * crop.h * .28;
+          ctx.drawImage(video, sx, sy, crop.w, crop.h, -crop.w * zoom / 2, -crop.h * zoom / 2, crop.w * zoom, crop.h * zoom);
+          ctx.restore();
+          ctx.filter = 'none';
+          applyColorLayers(ctx);
+          drawText(ctx, cw, ch);
+
+          stopped = true;
+          video.pause();
+          if (musicEl) musicEl.pause();
+          if (recorder.state !== 'inactive') recorder.stop();
+          return;
+        }
+
+        ctx.save();
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, cw, ch);
+        if (fitMode === 'blur') {
+          ctx.filter = 'blur(24px)';
+          ctx.drawImage(video, 0, 0, cw, ch);
+          ctx.filter = 'none';
+        }
+        ctx.translate(cw / 2, ch / 2);
+        ctx.rotate(rotation * Math.PI / 180);
+        ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+        ctx.filter = `${FILTERS[filter] || ''} brightness(${brightness / 100}) contrast(${contrast / 100}) saturate(${saturation / 100}) blur(${blur}px)`;
+        const sx = (bw - crop.w) / 2 - (posX / 100) * crop.w * .28;
+        const sy = (bh - crop.h) / 2 - (posY / 100) * crop.h * .28;
+        ctx.drawImage(video, sx, sy, crop.w, crop.h, -crop.w * zoom / 2, -crop.h * zoom / 2, crop.w * zoom, crop.h * zoom);
+        ctx.restore();
+        ctx.filter = 'none';
+        applyColorLayers(ctx);
+        drawText(ctx, cw, ch);
+        raf = requestAnimationFrame(draw);
+      };
+
+      recorder.start(200);
+      await video.play();
+      if (musicEl) await musicEl.play().catch(() => {});
+      setPlaying(true);
+      draw();
+
+      await done;
+      if (raf) cancelAnimationFrame(raf);
+      if (!chunks.length) throw new Error('No edited video data was produced.');
+
+      const outputType = mime || 'video/webm';
+      const blob = new Blob(chunks, { type: outputType });
+      if (!blob.size) throw new Error('Edited video export is empty.');
+
+      const safeName = file.name.replace(/\.[^.]+$/, '');
+      return new File([blob], `${safeName}-edited.webm`, {
+        type: 'video/webm',
+        lastModified: Date.now()
+      });
     } finally {
-      try{video.pause();}catch{}; if(video)video.playbackRate=1; if(video)video.volume=1; try{source.getTracks().forEach(t=>t.stop());}catch{}; try{stream.getTracks().forEach(t=>t.stop());}catch{}; try{if(audioCtx)audioCtx.close();}catch{}; if(musicEl)musicEl.pause(); setPlaying(false);
+      if (raf) cancelAnimationFrame(raf);
+      try { video.pause(); } catch {}
+      try { video.playbackRate = 1; } catch {}
+      try { video.volume = 1; } catch {}
+      try { source.getTracks().forEach(track => track.stop()); } catch {}
+      try { stream.getTracks().forEach(track => track.stop()); } catch {}
+      try { if (audioCtx) await audioCtx.close(); } catch {}
+      if (musicEl) {
+        try { musicEl.pause(); } catch {}
+        musicEl.src = '';
+      }
+      setPlaying(false);
     }
   };
 
@@ -194,11 +352,11 @@ function MediaEditor({ file, mediaType, onApply, onClose }) {
 
         {type==='video' && <div className="px-4 py-3 bg-[#181818] border-y border-white/10"><div className="flex items-center justify-between text-[11px] text-white/60 mb-2"><span>{start.toFixed(1)}s</span><span>{duration.toFixed(1)}s</span><span>{Math.max(0,(end-start)).toFixed(1)}s clip</span></div><div className="relative"><input type="range" min="0" max={Math.max(duration,.1)} step=".05" value={start} onChange={e=>previewSeek(e.target.value)} className="w-full accent-white"/><input type="range" min=".05" max={Math.max(duration,.1)} step=".05" value={end||duration||.05} onChange={e=>previewEnd(e.target.value)} className="w-full accent-white"/></div></div>}
 
-        <div className="px-3 pt-3 bg-[#151515] overflow-x-auto"><div className="flex gap-2 min-w-max pb-2">{tabs.map(([key,Icon,label])=><button key={key} onClick={()=>setTab(key)} className={`min-w-[72px] px-3 py-2 rounded-xl text-[11px] font-semibold flex flex-col items-center gap-1 ${tab===key?'bg-white text-black':'bg-white/5 text-white/65'}`}><Icon className="w-5 h-5"/><span>{label}</span></button>)}</div></div>
+        <div className="px-3 pt-3 bg-[#151515] overflow-x-auto whitespace-nowrap"><div className="flex gap-2 min-w-max pb-2">{tabs.map(([key,Icon,label])=><button key={key} onClick={()=>setTab(key)} className={`min-w-[72px] px-3 py-2 rounded-xl text-[11px] font-semibold flex flex-col items-center gap-1 ${tab===key?'bg-white text-black':'bg-white/5 text-white/65'}`}><Icon className="w-5 h-5"/><span>{label}</span></button>)}</div></div>
 
         <div className="p-4 bg-[#151515] min-h-[250px]">
-          {tab==='trim' && type==='video' && <section className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Start<input type="range" min="0" max={Math.max(duration,.1)} step=".05" value={start} onChange={e=>previewSeek(e.target.value)} className="w-full"/></label><label className="text-xs font-semibold">End<input type="range" min=".05" max={Math.max(duration,.1)} step=".05" value={end||duration||.05} onChange={e=>previewEnd(e.target.value)} className="w-full"/></label></div><div className="flex flex-wrap gap-2"><button onClick={()=>setRotation(r=>(r+90)%360)} className="tool"><RotateCw/>Rotate</button><button onClick={()=>setFlipX(v=>!v)} className="tool"><FlipHorizontal/>Flip H</button><button onClick={()=>setFlipY(v=>!v)} className="tool"><FlipVertical/>Flip V</button><button onClick={()=>setVolume(v=>v?0:1)} className="tool">{volume?<Volume2/>:<VolumeX/>}{volume?'Sound':'Muted'}</button></div></section>}
-          {tab==='adjust' && <section className="space-y-4"><div className="grid sm:grid-cols-2 gap-4">{[['Brightness',brightness,setBrightness,40,180],['Contrast',contrast,setContrast,40,180],['Saturation',saturation,setSaturation,0,200],['Blur',blur,setBlur,0,8],['Sharpen',sharpen,setSharpen,0,100],['Warmth',warmth,setWarmth,-100,100],['Tint',tint,setTint,-30,30],['Vignette',vignette,setVignette,0,100]].map(([label,val,setter,min,max])=><label key={label} className="text-xs font-semibold text-white/80">{label}<span className="float-right text-white/45">{typeof val==='number'?Math.round(val):val}</span><input type="range" min={min} max={max} step={label==='Blur'?.5:1} value={val} onChange={e=>setter(Number(e.target.value))} className="w-full accent-white"/></label>)}</div><div className="flex flex-wrap gap-2"><button className="tool" onClick={()=>setRotation(r=>(r+90)%360)}><RotateCw/>Rotate</button><button className="tool" onClick={()=>setFlipX(v=>!v)}><FlipHorizontal/>Flip H</button><button className="tool" onClick={()=>setFlipY(v=>!v)}><FlipVertical/>Flip V</button></div></section>}
+          {tab==='trim' && type==='video' && <section className="space-y-4"><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold">Start<input type="range" min="0" max={Math.max(duration,.1)} step=".05" value={start} onChange={e=>previewSeek(e.target.value)} className="w-full"/></label><label className="text-xs font-semibold">End<input type="range" min=".05" max={Math.max(duration,.1)} step=".05" value={end||duration||.05} onChange={e=>previewEnd(e.target.value)} className="w-full"/></label></div><div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1">{/* horizontal edit tools */}<button onClick={()=>setRotation(r=>(r+90)%360)} className="tool"><RotateCw/>Rotate</button><button onClick={()=>setFlipX(v=>!v)} className="tool"><FlipHorizontal/>Flip H</button><button onClick={()=>setFlipY(v=>!v)} className="tool"><FlipVertical/>Flip V</button><button onClick={()=>setVolume(v=>v?0:1)} className="tool">{volume?<Volume2/>:<VolumeX/>}{volume?'Sound':'Muted'}</button></div></section>}
+          {tab==='adjust' && <section className="space-y-4"><div className="grid sm:grid-cols-2 gap-4">{[['Brightness',brightness,setBrightness,40,180],['Contrast',contrast,setContrast,40,180],['Saturation',saturation,setSaturation,0,200],['Blur',blur,setBlur,0,8],['Sharpen',sharpen,setSharpen,0,100],['Warmth',warmth,setWarmth,-100,100],['Tint',tint,setTint,-30,30],['Vignette',vignette,setVignette,0,100]].map(([label,val,setter,min,max])=><label key={label} className="text-xs font-semibold text-white/80">{label}<span className="float-right text-white/45">{typeof val==='number'?Math.round(val):val}</span><input type="range" min={min} max={max} step={label==='Blur'?.5:1} value={val} onChange={e=>setter(Number(e.target.value))} className="w-full accent-white"/></label>)}</div><div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1"><button className="tool" onClick={()=>setRotation(r=>(r+90)%360)}><RotateCw/>Rotate</button><button className="tool" onClick={()=>setFlipX(v=>!v)}><FlipHorizontal/>Flip H</button><button className="tool" onClick={()=>setFlipY(v=>!v)}><FlipVertical/>Flip V</button></div></section>}
           {tab==='filters' && <section><div className="grid grid-cols-3 sm:grid-cols-5 gap-3">{Object.keys(FILTERS).map(name=><button key={name} onClick={()=>setFilter(name)} className={`rounded-2xl overflow-hidden border border-white/10 bg-white/5 ${filter===name?'ring-2 ring-white':''}`}><div className="h-20 bg-gradient-to-br from-purple-300 via-pink-300 to-orange-200" style={{filter:FILTERS[name]}}/><span className="block p-2 text-xs font-semibold">{name}</span></button>)}</div></section>}
           {tab==='crop' && <section className="space-y-5"><div><p className="text-xs font-semibold text-white/60 mb-2">Canvas ratio</p><div className="flex flex-wrap gap-2">{RATIOS.map(([value,label])=><button key={value} onClick={()=>setAspect(value)} className={`px-4 py-2 rounded-full border text-sm ${aspect===value?'bg-white text-black border-white':'border-white/15 text-white/70'}`}>{label}</button>)}</div></div><div><p className="text-xs font-semibold text-white/60 mb-2">Frame</p><div className="flex gap-2"><button onClick={()=>setFitMode('fill')} className={`px-4 py-2 rounded-full border ${fitMode==='fill'?'bg-white text-black':'border-white/15 text-white/70'}`}>Fill</button><button onClick={()=>setFitMode('blur')} className={`px-4 py-2 rounded-full border ${fitMode==='blur'?'bg-white text-black':'border-white/15 text-white/70'}`}>Blur background</button></div></div><label className="block text-xs font-semibold">Zoom {zoom.toFixed(2)}×<input type="range" min="1" max="3" step=".01" value={zoom} onChange={e=>setZoom(Number(e.target.value))} className="w-full accent-white"/></label><div className="grid grid-cols-2 gap-4"><label className="text-xs font-semibold flex items-center gap-2"><Move className="w-4 h-4"/>Horizontal<input type="range" min="-100" max="100" value={posX} onChange={e=>setPosX(Number(e.target.value))} className="flex-1 accent-white"/></label><label className="text-xs font-semibold flex items-center gap-2"><Move className="w-4 h-4 rotate-90"/>Vertical<input type="range" min="-100" max="100" value={posY} onChange={e=>setPosY(Number(e.target.value))} className="flex-1 accent-white"/></label></div></section>}
           {tab==='text' && <section className="space-y-4"><textarea value={text} onChange={e=>setText(e.target.value)} maxLength={160} placeholder="Type text…" className="w-full min-h-24 bg-white/5 border border-white/10 rounded-2xl p-3 outline-none"/><div className="grid grid-cols-2 gap-4"><label className="text-xs font-semibold">Size<input type="range" min="16" max="88" value={textSize} onChange={e=>setTextSize(Number(e.target.value))} className="w-full accent-white"/></label><label className="text-xs font-semibold">Position<select value={textPosition} onChange={e=>setTextPosition(e.target.value)} className="w-full mt-1 bg-white/5 border border-white/10 rounded-lg p-2"><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label></div><div className="flex items-center gap-3"><Palette className="w-4 h-4"/><input type="color" value={textColor} onChange={e=>setTextColor(e.target.value)} className="w-10 h-10 bg-transparent"/><label className="text-xs flex items-center gap-2"><input type="checkbox" checked={textBg} onChange={e=>setTextBg(e.target.checked)}/> Background</label></div><label className="text-xs font-semibold">Outline<input type="range" min="0" max="3" step="1" value={textStroke} onChange={e=>setTextStroke(Number(e.target.value))} className="w-full accent-white"/></label></section>}
@@ -207,7 +365,7 @@ function MediaEditor({ file, mediaType, onApply, onClose }) {
         </div>
         {error && <div className="mx-4 mb-4 rounded-2xl bg-red-500/15 border border-red-400/20 text-red-200 text-sm p-3">{error}</div>}
       </div>
-      <style>{`.tool{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .8rem;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.05);font-size:.8rem;font-weight:600}.tool svg{width:16px;height:16px}`}</style>
+      <style>{`.tool{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .8rem;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.05);font-size:.8rem;font-weight:600;flex:0 0 auto;white-space:nowrap}.tool svg{width:16px;height:16px}`}</style>
     </div>
   </div>;
 }
