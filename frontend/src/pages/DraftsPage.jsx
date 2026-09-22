@@ -6,18 +6,15 @@ const keyFor = (userId) => `ra-social-drafts-${userId || 'guest'}`;
 export default function DraftsPage({ userId, onBack, onEdit, searchQuery = '' }) {
   const [drafts, setDrafts] = useState([]);
   const [error, setError] = useState('');
-  const [error, setError] = useState('');
   const load = () => {
     try { const parsed = JSON.parse(localStorage.getItem(keyFor(userId)) || '[]'); setDrafts(Array.isArray(parsed) ? parsed : []); setError(''); } catch { setDrafts([]); setError('Draft storage could not be read.'); }
   };
   useEffect(load, [userId]);
   const visibleDrafts = drafts.filter((d) => { const q = String(searchQuery || '').trim().toLowerCase(); if (!q) return true; return String(d.content || '').toLowerCase().includes(q); });
   const remove = (id) => { if (!window.confirm('Delete this draft?')) return;
-    if (!window.confirm('Delete this draft?')) return;
     const next = drafts.filter(d => d.id !== id); setDrafts(next); localStorage.setItem(keyFor(userId), JSON.stringify(next));
   };
   return <div className="min-h-screen bg-gray-50 pb-24">
-    {error && <div role="alert" className="mx-4 mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
     <header className="sticky top-0 z-30 bg-white border-b px-4 py-3 flex items-center gap-3">
       <button onClick={onBack} aria-label="Back"><ArrowLeft className="w-5 h-5" /></button>
       <FileText className="w-5 h-5 text-purple-600" /><h1 className="font-bold text-lg">Drafts</h1>

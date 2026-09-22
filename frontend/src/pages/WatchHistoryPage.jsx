@@ -10,7 +10,6 @@ export default function WatchHistoryPage({ onBack, searchQuery = '' }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [error, setError] = useState('');
 
   const load = async () => {
     setLoading(true);

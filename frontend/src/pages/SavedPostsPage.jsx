@@ -8,7 +8,6 @@ export default function SavedPostsPage({ onBack, searchQuery = '' }) {
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [error, setError] = useState('');
 
   const load = async () => {
     setLoading(true);
