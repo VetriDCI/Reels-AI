@@ -232,37 +232,49 @@ function AppContent() {
   );
 }
 
-function TopBar({ logout, onNotifications, unreadNotificationCount, onSearch, searchOpen, searchQuery, onSearchChange, onCloseSearch, onProfile }) {
+function TopBar({ onNotifications, unreadNotificationCount, onSearch, searchOpen, searchQuery, onSearchChange, onCloseSearch, onProfile }) {
   return (
-    <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <div
-          className="shrink-0 text-left font-extrabold text-lg tracking-tight text-gray-900 whitespace-nowrap"
-          aria-label="RA Social"
-        >
+    <header className="fixed inset-x-0 top-0 z-50 h-16 bg-white/95 backdrop-blur border-b border-gray-200">
+      <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center gap-2 px-3 sm:gap-3 sm:px-4">
+        <div className="w-auto min-w-[78px] shrink-0 text-left font-extrabold text-base sm:text-lg tracking-tight text-gray-900 whitespace-nowrap" aria-label="RA Social">
           RA Social
         </div>
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-gray-400" />
           {searchOpen ? (
-            <>
-              <input autoFocus value={searchQuery} onChange={(e) => onSearchChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') onCloseSearch(); }} placeholder="Search this page" aria-label="Search this page" className="block w-full pl-10 pr-10 py-2 bg-gray-100 rounded-full text-sm outline-none focus:ring-2 focus:ring-purple-300" />
-              <button onClick={onCloseSearch} aria-label="Close search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-200"><X className="w-4 h-4 text-gray-500" /></button>
-            </>
+            <div className="relative w-full">
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') onCloseSearch(); }}
+                placeholder="Search this page"
+                aria-label="Search this page"
+                className="block h-10 w-full rounded-full bg-gray-100 pl-10 pr-10 text-sm leading-5 outline-none transition focus:bg-white focus:ring-2 focus:ring-purple-300"
+              />
+              <button onClick={onCloseSearch} aria-label="Close search" className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full hover:bg-gray-200">
+                <X className="h-4 w-4 text-gray-500" />
+              </button>
+            </div>
           ) : (
-            <button onClick={() => onSearch('')} className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500 text-left" aria-label="Search this page">Search</button>
+            <button onClick={() => onSearch('')} className="block h-10 w-full rounded-full bg-gray-100 pl-10 pr-4 text-left text-sm leading-5 text-gray-500 transition hover:bg-gray-200" aria-label="Search this page">
+              Search
+            </button>
           )}
         </div>
-        <button onClick={onNotifications} aria-label="Notifications" className="relative p-2 hover:bg-gray-100 rounded-full shrink-0">
-          <Bell className="w-6 h-6 text-gray-700" />
+
+        <button onClick={onNotifications} aria-label="Notifications" className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-gray-100">
+          <Bell className="h-6 w-6 text-gray-700" />
           {unreadNotificationCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] leading-[18px] font-bold text-center ring-2 ring-white">
+            <span className="absolute right-0 top-0 min-w-[18px] h-[18px] rounded-full bg-red-500 px-1 text-center text-[10px] font-bold leading-[18px] text-white ring-2 ring-white">
               {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
             </span>
           )}
         </button>
-        <button onClick={onProfile} aria-label="My Profile" className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden shrink-0">
-          <User className="w-5 h-5" />
+
+        <button onClick={onProfile} aria-label="My Profile" className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-blue-500 text-sm font-bold text-white">
+          <User className="h-5 w-5" />
         </button>
       </div>
     </header>
