@@ -12,7 +12,7 @@ function readHistory() {
   } catch { return []; }
 }
 
-function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag }) {
+function SearchPage({ initialQuery = '', source = 'home', onBack, onOpenProfile, onOpenHashtag }) {
   const [query, setQuery] = useState(initialQuery || '');
   const [history, setHistory] = useState(readHistory);
   const [results, setResults] = useState(null);
@@ -58,7 +58,7 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
     setError('');
     try {
       // A normal search is one unified search. There are no All/User/Post/Hashtag tabs.
-      const response = await api.get('/search', { params: { query: q, type: 'all' } });
+      const response = await api.get('/search', { params: { query: q, type: source === 'reels' ? 'posts' : 'all' } });
       const data = response.data?.data || {};
       setResults({
         users: Array.isArray(data.users) ? data.users : [],
@@ -102,7 +102,7 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
         {!query.trim() && !results && (
           <section className="mt-6">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Clock3 className="w-4 h-4" />Search history</h2>
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Clock3 className="w-4 h-4" />{source === 'reels' ? 'Reels search history' : 'Search history'}</h2>
               {history.length > 0 && <button onClick={clearHistory} className="text-sm text-red-600 flex items-center gap-1"><Trash2 className="w-4 h-4" />Clear all</button>}
             </div>
             {history.length === 0 ? (
@@ -128,9 +128,10 @@ function SearchPage({ initialQuery = '', onBack, onOpenProfile, onOpenHashtag })
           <div className="space-y-3 mt-5">
             {error && <div className="p-3 rounded-xl bg-red-50 text-red-700 text-sm border border-red-100">{error}</div>}
             {resultCount === 0 && <div className="text-center py-20 text-gray-500">No results found</div>}
-            {[...(results.users || []).map(u => ({ kind: 'user', id: `user-${u.id}`, item: u })),
-              ...(results.posts || []).map(post => ({ kind: 'post', id: `post-${post.id}`, item: post })),
-              ...(results.hashtags || []).map(tag => ({ kind: 'hashtag', id: `hashtag-${tag.id}`, item: tag }))
+            {[
+              ...(source === 'reels' ? [] : (results.users || []).map(u => ({ kind: 'user', id: `user-${u.id}`, item: u }))),
+              ...(results.posts || []).filter(post => source === 'reels' ? (post.mediaType === 'video' || /video|reel/i.test(String(post.mediaType || '')) || Boolean(post.mediaUrl)) : true).map(post => ({ kind: 'post', id: `post-${post.id}`, item: post })),
+              ...(source === 'reels' ? [] : (results.hashtags || []).map(tag => ({ kind: 'hashtag', id: `hashtag-${tag.id}`, item: tag })))
             ].map(result => {
               if (result.kind === 'user') {
                 const u = result.item;

@@ -42,7 +42,7 @@ function VibeViewer({ vibes, index, userId, onClose, onDelete }) {
   );
 }
 
-export default function ChatPage() {
+export default function ChatPage({ searchQuery = '' }) {
   const { user } = useAuth();
   const [chats, setChats] = useState([]), [selectedChat, setSelectedChat] = useState(null), [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState(''), [loading, setLoading] = useState(true), [newChatOpen, setNewChatOpen] = useState(false);
@@ -67,6 +67,15 @@ export default function ChatPage() {
     return Array.from(groups.values());
   }, [vibes, user?.id]);
   const ownVibe = ownVibes[0] || null;
+  const visibleChats = useMemo(() => {
+    const q = String(searchQuery || '').trim().toLowerCase();
+    if (!q) return chats;
+    return chats.filter((chat) => {
+      const person = other(chat);
+      const haystack = [person?.fullName, person?.username, person?.phoneNumber, chat?.messages?.[0]?.content].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [chats, searchQuery]);
   const storyGroups = useMemo(() => [
     ...(ownVibes.length ? [{ userId: user?.id, items: ownVibes, own: true }] : []),
     ...otherVibeGroups.map(items => ({ userId: items[0]?.userId, items, own: false }))
@@ -208,7 +217,7 @@ export default function ChatPage() {
         </div></div>
         <button onClick={() => { setVibeFiles([]); setVibeCaption(''); setVibeComposerOpen(true); }} className="shrink-0 w-12 h-12 min-w-12 min-h-12 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-sm" aria-label="Add Vibe"><Plus className="w-6 h-6" /></button>
       </div><div className="mt-1 flex items-center gap-1 text-[11px] text-gray-400"><Clock3 className="w-3 h-3" /> Vibes disappear automatically after 24 hours</div></div>
-      <div className="flex-1 min-h-0 overflow-y-auto">{loading ? <div className="text-center py-20 text-gray-400">Loading chats...</div> : chats.length ? chats.map(c => { const o = other(c); return <button key={c.id} onClick={() => setSelectedChat(c)} className={`w-full flex items-center gap-3 p-4 text-left hover:bg-gray-50 ${selectedChat?.id === c.id ? 'bg-purple-50' : ''}`}><div className="relative shrink-0"><img src={o?.avatarUrl || `https://i.pravatar.cc/150?u=${o?.id}`} className="w-12 h-12 rounded-full object-cover" alt="" />{onlineUserIds.includes(o?.id) && <span className="absolute right-0 bottom-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />}</div><div className="min-w-0"><h3 className="font-semibold truncate">{o?.fullName || o?.username}</h3><p className="text-sm text-gray-500 truncate">{c.messages?.[0]?.content || 'Start chatting'}</p></div></button>; }) : <div className="p-8 text-center text-sm text-gray-400">No chats yet. Tap + to start a conversation.</div>}</div>
+      <div className="flex-1 min-h-0 overflow-y-auto">{loading ? <div className="text-center py-20 text-gray-400">Loading chats...</div> : visibleChats.length ? visibleChats.map(c => { const o = other(c); return <button key={c.id} onClick={() => setSelectedChat(c)} className={`w-full flex items-center gap-3 p-4 text-left hover:bg-gray-50 ${selectedChat?.id === c.id ? 'bg-purple-50' : ''}`}><div className="relative shrink-0"><img src={o?.avatarUrl || `https://i.pravatar.cc/150?u=${o?.id}`} className="w-12 h-12 rounded-full object-cover" alt="" />{onlineUserIds.includes(o?.id) && <span className="absolute right-0 bottom-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />}</div><div className="min-w-0"><h3 className="font-semibold truncate">{o?.fullName || o?.username}</h3><p className="text-sm text-gray-500 truncate">{c.messages?.[0]?.content || 'Start chatting'}</p></div></button>; }) : <div className="p-8 text-center text-sm text-gray-400">{searchQuery.trim() ? 'No chats match your search.' : 'No chats yet. Tap + to start a conversation.'}</div>}</div>
     </section>
     <section className={`${selectedChat ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 min-h-0 flex-col h-full`}>
       {selectedChat ? <>

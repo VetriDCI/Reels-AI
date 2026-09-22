@@ -6,7 +6,7 @@ import PostCard from '../components/PostCard';
 const dayKey = (value) => new Date(value).toISOString().slice(0, 10);
 const formatDay = (value) => new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value));
 
-export default function WatchHistoryPage({ onBack }) {
+export default function WatchHistoryPage({ onBack, searchQuery = '' }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -23,15 +23,17 @@ export default function WatchHistoryPage({ onBack }) {
   };
   useEffect(() => { load(); }, []);
 
+  const filteredItems = useMemo(() => { const q = String(searchQuery || '').trim().toLowerCase(); if (!q) return items; return items.filter(item => [item.post?.content, item.post?.user?.fullName, item.post?.user?.username, ...(item.post?.hashtags || [])].filter(Boolean).join(' ').toLowerCase().includes(q)); }, [items, searchQuery]);
+
   const groups = useMemo(() => {
     const map = new Map();
-    items.forEach((item) => {
+    filteredItems.forEach((item) => {
       const key = dayKey(item.watchedAt);
       if (!map.has(key)) map.set(key, { date: item.watchedAt, items: [] });
       map.get(key).items.push(item);
     });
     return [...map.values()];
-  }, [items]);
+  }, [filteredItems]);
 
   const clearAll = async () => {
     if (!items.length || !window.confirm('Clear your watch history?')) return;

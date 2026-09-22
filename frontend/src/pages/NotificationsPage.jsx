@@ -20,7 +20,7 @@ function ConfirmModal({ title, message, confirmLabel = 'Delete', onConfirm, onCa
   );
 }
 
-function NotificationsPage() {
+function NotificationsPage({ searchQuery = '' }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState(null);
@@ -43,6 +43,8 @@ function NotificationsPage() {
       setLoading(false);
     }
   };
+
+  const visibleNotifications = notifications.filter((item) => { const q = String(searchQuery || '').trim().toLowerCase(); if (!q) return true; return [item.message, item.sender?.fullName, item.sender?.username, item.post?.content, item.type].filter(Boolean).join(' ').toLowerCase().includes(q); });
 
   const getIcon = (type) => {
     switch (type) {
@@ -88,7 +90,7 @@ function NotificationsPage() {
           <h2 className="text-2xl font-bold text-gray-900">Notifications</h2>
           <p className="text-sm text-gray-500 mt-1">Your latest activity and updates</p>
         </div>
-        {notifications.length > 0 && (
+        {visibleNotifications.length > 0 && (
           <button
             onClick={() => setConfirm({ type: 'all' })}
             className="shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold"
@@ -100,11 +102,11 @@ function NotificationsPage() {
 
       {loading ? (
         <div className="text-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" /><p className="text-gray-500 mt-4">Loading notifications...</p></div>
-      ) : notifications.length === 0 ? (
+      ) : visibleNotifications.length === 0 ? (
         <div className="text-center py-20"><Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" /><h3 className="text-xl font-semibold text-gray-700">No notifications yet</h3><p className="text-gray-500 mt-2">When someone likes or comments on your posts, you'll see it here</p></div>
       ) : (
         <div className="max-w-3xl mx-auto space-y-3">
-          {notifications.map((notification) => (
+          {visibleNotifications.map((notification) => (
             <div key={notification.id} className={`flex items-center gap-3 sm:gap-4 p-4 bg-white rounded-2xl shadow-sm border ${!notification.isRead ? 'border-purple-200' : 'border-gray-100'}`}>
               <div className="flex-shrink-0">{getIcon(notification.type)}</div>
               <img src={notification.sender?.avatarUrl || `https://i.pravatar.cc/150?u=${notification.senderId || notification.id}`} alt="" className="w-11 h-11 rounded-full object-cover" />

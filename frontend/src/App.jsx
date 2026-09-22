@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell } from 'lucide-react';
+import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, X } from 'lucide-react';
 import { postAPI, notificationAPI } from './services/api';
 
 // Pages
@@ -39,6 +39,8 @@ function AppContent() {
   const [reelTarget, setReelTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchSource, setSearchSource] = useState('home');
+  const [contextSearchQuery, setContextSearchQuery] = useState('');
+  const [contextSearchOpen, setContextSearchOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [savedReturnTab, setSavedReturnTab] = useState('me');
@@ -87,10 +89,30 @@ function AppContent() {
   }, [activeTab]);
 
   const openSearch = (query = '') => {
-    setSearchSource(activeTab === 'search' ? 'home' : activeTab);
-    setSearchQuery(query.trim());
-    navigateTab('search');
+    const value = typeof query === 'string' ? query : '';
+    // Search is page-scoped: Home searches Home feed, Chat searches chats,
+    // and AI searches AI conversations. It no longer opens one global result
+    // page for every section. Reels keeps its dedicated search page.
+    if (activeTab === 'reels') {
+      setSearchSource('reels');
+      setSearchQuery(value.trim());
+      navigateTab('search');
+      return;
+    }
+    setContextSearchQuery(value);
+    setContextSearchOpen(true);
   };
+
+  const closeContextSearch = () => {
+    setContextSearchOpen(false);
+    setContextSearchQuery('');
+  };
+
+  // Never carry a search term from one page into another page.
+  useEffect(() => {
+    setContextSearchQuery('');
+    setContextSearchOpen(false);
+  }, [activeTab]);
 
   const openProfile = (id) => { setPublicProfileId(id); navigateTab('public-profile'); };
 
@@ -171,22 +193,26 @@ function AppContent() {
           onNotifications={() => navigateTab('notifications')}
           unreadNotificationCount={unreadNotificationCount}
           onSearch={openSearch}
+          searchOpen={contextSearchOpen}
+          searchQuery={contextSearchQuery}
+          onSearchChange={setContextSearchQuery}
+          onCloseSearch={closeContextSearch}
           onProfile={() => navigateTab('me')}
         />
       )}
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
-        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} />}
+        {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} searchQuery={contextSearchQuery} />}
         {activeTab === 'reels' && <ReelsPage onNotifications={() => navigateTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} initialPostId={reelTarget?.id} />}
-        {activeTab === 'ai' && <AIFeatures />}
-        {activeTab === 'chat' && <ChatPage />}
+        {activeTab === 'ai' && <AIFeatures searchQuery={contextSearchQuery} />}
+        {activeTab === 'chat' && <ChatPage searchQuery={contextSearchQuery} />}
         {activeTab === 'me' && <MePage onLogout={logout} onOpenReportHistory={() => navigateTab('report-history')} onBack={() => navigateTab('home')} onOpenDrafts={() => navigateTab('drafts')} />}
-        {activeTab === 'notifications' && <NotificationsPage />}
-        {activeTab === 'search' && <SearchPage initialQuery={searchQuery} onBack={() => navigateTab(searchSource || 'home')} onOpenProfile={openProfile} onOpenHashtag={openHashtag} />}
-        {activeTab === 'saved' && <SavedPostsPage onBack={() => navigateTab(savedReturnTab)} />}
-        {activeTab === 'drafts' && <DraftsPage userId={user?.id} onBack={() => navigateTab('me')} onEdit={(draft) => { setDraftToEdit(draft); setShowCreateModal(true); navigateTab('home'); }} />}
-        {activeTab === 'report-history' && <ReportHistoryPage onBack={() => navigateTab('me')} />}
-        {activeTab === 'watch-history' && <WatchHistoryPage onBack={() => navigateTab('me')} />}
+        {activeTab === 'notifications' && <NotificationsPage searchQuery={contextSearchQuery} />}
+        {activeTab === 'search' && <SearchPage initialQuery={searchQuery} source={searchSource} onBack={() => navigateTab(searchSource || 'home')} onOpenProfile={openProfile} onOpenHashtag={openHashtag} />}
+        {activeTab === 'saved' && <SavedPostsPage onBack={() => navigateTab(savedReturnTab)} searchQuery={contextSearchQuery} />}
+        {activeTab === 'drafts' && <DraftsPage userId={user?.id} onBack={() => navigateTab('me')} onEdit={(draft) => { setDraftToEdit(draft); setShowCreateModal(true); navigateTab('home'); }} searchQuery={contextSearchQuery} />}
+        {activeTab === 'report-history' && <ReportHistoryPage onBack={() => navigateTab('me')} searchQuery={contextSearchQuery} />}
+        {activeTab === 'watch-history' && <WatchHistoryPage onBack={() => navigateTab('me')} searchQuery={contextSearchQuery} />}
         {activeTab === 'hashtag' && <HashtagPage name={hashtagName} onBack={() => navigateTab(searchSource || 'home')} onOpenReel={openReel} />}
         {activeTab === 'public-profile' && <PublicProfilePage userId={publicProfileId} onBack={() => navigateTab(searchSource || 'home')} />}
       </main>
@@ -206,7 +232,7 @@ function AppContent() {
   );
 }
 
-function TopBar({ logout, onNotifications, unreadNotificationCount, onSearch, onProfile }) {
+function TopBar({ logout, onNotifications, unreadNotificationCount, onSearch, searchOpen, searchQuery, onSearchChange, onCloseSearch, onProfile }) {
   return (
     <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
       <div className="flex items-center gap-3 px-4 py-3">
@@ -216,10 +242,17 @@ function TopBar({ logout, onNotifications, unreadNotificationCount, onSearch, on
         >
           RA Social
         </div>
-        <button onClick={() => onSearch('')} className="relative flex-1 text-left min-w-0" aria-label="Search">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <span className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500">Search</span>
-        </button>
+          {searchOpen ? (
+            <>
+              <input autoFocus value={searchQuery} onChange={(e) => onSearchChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') onCloseSearch(); }} placeholder="Search this page" aria-label="Search this page" className="block w-full pl-10 pr-10 py-2 bg-gray-100 rounded-full text-sm outline-none focus:ring-2 focus:ring-purple-300" />
+              <button onClick={onCloseSearch} aria-label="Close search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-gray-200"><X className="w-4 h-4 text-gray-500" /></button>
+            </>
+          ) : (
+            <button onClick={() => onSearch('')} className="block w-full pl-10 pr-4 py-2 bg-gray-100 rounded-full text-sm text-gray-500 text-left" aria-label="Search this page">Search</button>
+          )}
+        </div>
         <button onClick={onNotifications} aria-label="Notifications" className="relative p-2 hover:bg-gray-100 rounded-full shrink-0">
           <Bell className="w-6 h-6 text-gray-700" />
           {unreadNotificationCount > 0 && (
@@ -277,7 +310,7 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTa
   );
 }
 
-function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
+function HomeFeed({ posts, setPosts, refreshKey, onOpenReel, searchQuery = '' }) {
   const fetchPosts = async () => {
     try {
       const response = await postAPI.getFeed();
@@ -300,14 +333,20 @@ function HomeFeed({ posts, setPosts, refreshKey, onOpenReel }) {
     }
   };
 
+  const q = String(searchQuery || '').trim().toLowerCase();
+  const visiblePosts = q ? posts.filter((post) => {
+    const haystack = [post.content, post.user?.fullName, post.user?.username, ...(post.hashtags || [])].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
+  }) : posts;
+
   return (
     <div className="pt-20 px-4 pb-4 space-y-4">
-      {posts.length === 0 ? (
+      {visiblePosts.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-500">No posts yet. Be the first to post!</p>
         </div>
       ) : (
-        posts.map((post) => (
+        visiblePosts.map((post) => (
           <PostCard key={post.id} post={post} onLike={() => handleLike(post.id)} onOpenReel={onOpenReel} />
         ))
       )}

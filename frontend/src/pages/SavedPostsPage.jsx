@@ -3,7 +3,7 @@ import { ArrowLeft, Bookmark, Film, Image as ImageIcon, Trash2 } from 'lucide-re
 import { savedPostAPI } from '../services/api';
 import PostCard from '../components/PostCard';
 
-export default function SavedPostsPage({ onBack }) {
+export default function SavedPostsPage({ onBack, searchQuery = '' }) {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -16,7 +16,7 @@ export default function SavedPostsPage({ onBack }) {
   };
   useEffect(() => { load(); }, []);
 
-  const filtered = items.filter(x => filter === 'all' || (filter === 'reels' ? x.post?.mediaType === 'video' : x.post?.mediaType !== 'video'));
+  const filtered = items.filter(x => { const q = String(searchQuery || '').trim().toLowerCase(); const matchesPage = !q || [x.post?.content, x.post?.user?.fullName, x.post?.user?.username, ...(x.post?.hashtags || [])].filter(Boolean).join(' ').toLowerCase().includes(q); return matchesPage && (filter === 'all' || (filter === 'reels' ? x.post?.mediaType === 'video' : x.post?.mediaType !== 'video')); });
   const remove = async (id) => { try { await savedPostAPI.remove(id); setItems(prev => prev.filter(x => x.post?.id !== id)); } catch (e) { alert(e.response?.data?.message || 'Unable to remove saved post'); } };
 
   return <div className="min-h-screen bg-gray-50 pb-24">

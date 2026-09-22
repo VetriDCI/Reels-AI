@@ -9,7 +9,7 @@ const statusMeta = {
   dismissed: { label: 'Dismissed', icon: XCircle, cls: 'bg-gray-100 text-gray-600' }
 };
 
-export default function ReportHistoryPage({ onBack }) {
+export default function ReportHistoryPage({ onBack, searchQuery = '' }) {
   const [reports, setReports] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -27,6 +27,7 @@ export default function ReportHistoryPage({ onBack }) {
   useEffect(() => { load(); }, []);
 
   const visible = useMemo(() => filter === 'all' ? reports : reports.filter(r => r.status === filter), [reports, filter]);
+  const searched = useMemo(() => { const q = String(searchQuery || '').trim().toLowerCase(); if (!q) return visible; return visible.filter(r => [r.reason, r.status, r.post?.content, r.post?.user?.username].filter(Boolean).join(' ').toLowerCase().includes(q)); }, [visible, searchQuery]);
   const counts = useMemo(() => ({
     all: reports.length,
     pending: reports.filter(r => r.status === 'pending').length,
@@ -53,8 +54,8 @@ export default function ReportHistoryPage({ onBack }) {
 
         {loading ? <div className="bg-white rounded-2xl p-8 text-center text-sm text-gray-500">Loading report history…</div> :
          error ? <div className="bg-white rounded-2xl p-6 text-center"><p className="text-sm text-red-600 mb-3">{error}</p><button onClick={load} className="px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-semibold">Try again</button></div> :
-         visible.length === 0 ? <div className="bg-white rounded-2xl p-8 text-center shadow-sm"><Flag className="w-10 h-10 mx-auto text-gray-300 mb-3"/><p className="font-semibold text-gray-700">No reports found</p><p className="text-xs text-gray-500 mt-1">Posts you report will appear here.</p></div> :
-         <div className="space-y-3">{visible.map(report => <ReportItem key={report.id} report={report} />)}</div>}
+         searched.length === 0 ? <div className="bg-white rounded-2xl p-8 text-center shadow-sm"><Flag className="w-10 h-10 mx-auto text-gray-300 mb-3"/><p className="font-semibold text-gray-700">No reports found</p><p className="text-xs text-gray-500 mt-1">Posts you report will appear here.</p></div> :
+         <div className="space-y-3">{searched.map(report => <ReportItem key={report.id} report={report} />)}</div>}
       </div>
     </div>
   );

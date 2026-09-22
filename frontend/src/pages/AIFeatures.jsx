@@ -10,7 +10,7 @@ import MediaEditor from '../components/MediaEditor';
 
 const MAX_FILES = 6;
 
-function AIFeatures() {
+function AIFeatures({ searchQuery = '' }) {
   const [conversations, setConversations] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -168,6 +168,12 @@ function AIFeatures() {
     setAiWorkspace('video');
     setMediaGenerateMode('video');
   };
+
+  const visibleConversations = conversations.filter((item) => {
+    const q = String(searchQuery || '').trim().toLowerCase();
+    if (!q) return true;
+    return String(item.title || '').toLowerCase().includes(q);
+  });
 
   const deleteConversation = async (id, event) => {
     event.stopPropagation();
@@ -571,8 +577,8 @@ function AIFeatures() {
             {loadingHistory ? (
               <div className="p-4 text-sm text-gray-400">Loading history...</div>
             ) : conversations.length === 0 ? (
-              <div className="p-4 text-sm text-gray-400">Your AI conversations will appear here.</div>
-            ) : conversations.map((item) => (
+              <div className="p-4 text-sm text-gray-400">{searchQuery.trim() ? 'No AI conversations match your search.' : 'Your AI conversations will appear here.'}</div>
+            ) : visibleConversations.map((item) => (
               <button key={item.id} onClick={() => openConversation(item.id)} className={`w-full text-left group flex items-center gap-2 p-3 rounded-xl mb-1 ${conversationId === item.id ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
                 <MessageSquare size={17} className="text-gray-500 shrink-0" />
                 <span className="flex-1 truncate text-sm text-gray-700">{item.title}</span>
