@@ -168,9 +168,20 @@ function MediaEditor({ file, mediaType, onApply, onClose }) {
     }
   };
 
-  const apply = async () => { if(!file)return; setProcessing(true);setError('');try{onApply?.(type==='image'?await imageExport():await exportVideo());}catch(e){setError(e.message||'Could not export edited media.');}finally{setProcessing(false);setPlaying(false);} };
+  const apply = async () => {
+    if (!file || processing) return;
+    setProcessing(true); setError('');
+    try {
+      const output = type === 'image' ? await imageExport() : await exportVideo();
+      if (!output || !output.size) throw new Error('Edited media export returned an empty file. Please try again.');
+      onApply?.(output);
+    } catch (e) {
+      setError(e?.message || 'Could not export edited media.');
+    } finally { setProcessing(false); setPlaying(false); }
+  };
   const previewSeek=(value)=>{const n=Number(value);setStart(Math.min(n,Math.max(0,(end||duration)-.1)));if(videoRef.current)videoRef.current.currentTime=n;};
-  const previewEnd=(value)=>setEnd(Math.max(Number(value),start+.1));
+  const previewEnd=(value)=>{ const n=clamp(Number(value)||0, start+.1, duration||Number.MAX_SAFE_INTEGER); setEnd(n); if(videoRef.current && videoRef.current.currentTime>n) videoRef.current.currentTime=n; };
+  const canExportVideo = type !== 'video' || Boolean(window.MediaRecorder && HTMLCanvasElement.prototype.captureStream && videoRef.current?.captureStream);
 
   const tabs=type==='video'
     ? [['trim',Scissors,'Trim'],['adjust',SlidersHorizontal,'Adjust'],['filters',Sparkles,'Filters'],['crop',Crop,'Crop'],['text',Type,'Text'],['music',Music2,'Music'],['speed',Gauge,'Speed']]
@@ -182,12 +193,12 @@ function MediaEditor({ file, mediaType, onApply, onClose }) {
         <button onClick={onClose} disabled={processing} className="p-2 rounded-full hover:bg-white/10"><X/></button>
         <div className="flex-1 min-w-0"><b className="block truncate">{type==='image'?'Photo Editor':'Video Editor'}</b><span className="text-[11px] text-white/50">Pro edit • Save keeps the file ready for Post / Reels / Vibe / Chat</span></div>
         <button onClick={reset} disabled={processing} className="p-2 rounded-full hover:bg-white/10" title="Reset"><RotateCcw className="w-4 h-4"/></button>
-        <button onClick={apply} disabled={processing} className="px-4 py-2 rounded-full bg-white text-black font-bold text-sm flex items-center gap-1">{processing?'Exporting…':<><Check className="w-4 h-4"/>Save edit</>}</button>
+        <button onClick={apply} disabled={processing || (type==='video' && !canExportVideo)} title={type==='video' && !canExportVideo ? 'Video editing export is not supported in this browser' : undefined} className="px-4 py-2 rounded-full bg-white text-black font-bold text-sm flex items-center gap-1">{processing?'Exporting…':(type==='video' && !canExportVideo ? 'Export unavailable' : <><Check className="w-4 h-4"/>Save edit</>)}</button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         <div className="relative bg-black min-h-[34vh] sm:min-h-[48vh] flex items-center justify-center overflow-hidden">
-          {type==='image' ? <img ref={imageRef} src={url} alt="Editing preview" className="max-h-[52vh] max-w-[94vw] object-contain select-none" style={{filter:visualFilter,transform:previewTransform}}/> : <div className="relative w-full flex justify-center"><video ref={videoRef} src={url} playsInline preload="metadata" className="max-h-[52vh] max-w-full object-contain" style={{filter:visualFilter,transform:previewTransform}} onLoadedMetadata={e=>{const d=e.currentTarget.duration||0;setDuration(d);if(!end)setEnd(d);}} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)}/><canvas ref={canvasRef} className="hidden"/><button onClick={()=>{const v=videoRef.current;if(!v)return;if(v.paused){v.play();}else v.pause();}} className="absolute bottom-4 left-4 w-12 h-12 rounded-full bg-black/65 border border-white/20 flex items-center justify-center">{playing?<Pause/>:<Play/>}</button></div>}
+          {type==='image' ? <img ref={imageRef} src={url} alt="Editing preview" className="max-h-[52vh] max-w-[94vw] object-contain select-none" style={{filter:visualFilter,transform:previewTransform}}/> : <div className="relative w-full flex justify-center"><video ref={videoRef} src={url} playsInline preload="metadata" className="max-h-[52vh] max-w-full object-contain" style={{filter:visualFilter,transform:previewTransform}} onLoadedMetadata={e=>{const d=e.currentTarget.duration||0;setDuration(d);if(!end)setEnd(d);}} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)}/><canvas ref={canvasRef} className="hidden"/><button type="button" aria-label={playing?'Pause preview':'Play preview'} onClick={()=>{const v=videoRef.current;if(!v)return;if(v.paused){v.play().catch(()=>setError('Video playback was blocked. Tap the video to start it.'));}else v.pause();}} className="absolute bottom-4 left-4 w-12 h-12 rounded-full bg-black/65 border border-white/20 flex items-center justify-center">{playing?<Pause/>:<Play/>}</button></div>}
           {vignette>0 && <div className="pointer-events-none absolute inset-0" style={{background:'radial-gradient(circle, transparent 45%, rgba(0,0,0,.55) 100%)',opacity:vignette/100}}/>}
           {text.trim() && <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl font-bold text-center whitespace-pre-wrap ${textPosition==='top'?'top-6':textPosition==='center'?'top-1/2 -translate-y-1/2':'bottom-6'}`} style={{color:textColor,WebkitTextStroke:`${textStroke}px #000`,background:textBg?'rgba(0,0,0,.55)':'transparent',fontSize:Math.max(14,textSize*.45)}}>{text}</div>}
         </div>

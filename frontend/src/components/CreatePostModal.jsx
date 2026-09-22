@@ -5,6 +5,7 @@ import MediaEditor from './MediaEditor';
 
 function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, initialDraft, onDraftSaved }) {
   const [content, setContent] = useState(initialDraft?.content || '');
+  const MAX_CONTENT = 5000;
   const [savedDraftId, setSavedDraftId] = useState(initialDraft?.id || null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [file, setFile] = useState(null);
@@ -13,6 +14,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   const [previewUrl, setPreviewUrl] = useState(null);
   const [mediaKind, setMediaKind] = useState(null);
   const [uploadStage, setUploadStage] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [livePreview, setLivePreview] = useState(false);
   const [liveState, setLiveState] = useState('idle');
   const [cameraError, setCameraError] = useState('');
@@ -150,7 +152,9 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
       let mediaItems = Array.isArray(initialDraft?.mediaItems) ? initialDraft.mediaItems : [];
       if (selectedFiles.length) {
         mediaItems = await Promise.all(selectedFiles.map(async selectedFile => {
-          const upload = await uploadAPI.media(selectedFile);
+          const upload = await uploadAPI.media(selectedFile, (event) => {
+            if (event.total) setUploadProgress(Math.round((event.loaded / event.total) * 100));
+          });
           return { mediaUrl: upload.data.data.url, mediaType: selectedFile.type?.startsWith('video/') ? 'video' : upload.data.data.mediaType };
         }));
       }
@@ -167,12 +171,16 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   };
 
   const handleSubmit = async () => {
+    if (content.length > MAX_CONTENT) return;
     const selectedFiles = files.length ? files : (file ? [file] : []);
     if (!content.trim() && !selectedFiles.length && !initialDraft?.mediaUrl) return;
     setUploadStage('uploading');
+    setUploadProgress(0);
     try {
       const items = selectedFiles.length ? await Promise.all(selectedFiles.map(async (selectedFile) => {
-        const upload = await uploadAPI.media(selectedFile);
+        const upload = await uploadAPI.media(selectedFile, (event) => {
+            if (event.total) setUploadProgress(Math.round((event.loaded / event.total) * 100));
+          });
         return { mediaUrl: upload.data.data.url, mediaType: selectedFile.type?.startsWith('video/') ? 'video' : upload.data.data.mediaType };
       })) : [{ mediaUrl: initialDraft?.mediaUrl || null, mediaType: initialDraft?.mediaType || 'text' }];
       setUploadStage('publishing');
@@ -202,13 +210,15 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
         {loading && (
           <div className="absolute inset-0 bg-white/95 z-30 flex flex-col items-center justify-center gap-4">
             <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
-            <p className="text-sm font-semibold text-gray-800">{uploadStage === 'uploading' ? 'Uploading media…' : 'Publishing post…'}</p>
+            <p className="text-sm font-semibold text-gray-800">{uploadStage === 'uploading' ? `Uploading media… ${uploadProgress}%` : 'Publishing post…'}</p>
+            {uploadStage === 'uploading' && <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress}><div className="h-full bg-purple-600 transition-all" style={{ width: `${uploadProgress}%` }} /></div>}
             <p className="text-xs text-gray-500">Please keep this window open.</p>
           </div>
         )}
 
         <div className="p-4 space-y-4">
-          <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="What's on your mind?" className="w-full h-32 resize-none focus:outline-none text-gray-800" />
+          <textarea value={content} onChange={e => setContent(e.target.value.slice(0, MAX_CONTENT))} maxLength={MAX_CONTENT} placeholder="What's on your mind?" className="w-full h-32 resize-none focus:outline-none text-gray-800" aria-label="Post content" />
+          <div className="text-right text-xs text-gray-400">{content.length}/{MAX_CONTENT}</div>
 
           {!previewUrl && !livePreview && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

@@ -25,7 +25,7 @@ export default function InstallPrompt() {
     };
     window.addEventListener('beforeinstallprompt', handler);
 
-    if (isIos()) {
+    if (isIos() && !window.navigator.standalone) {
       setShowIosHint(true);
     }
 
@@ -35,9 +35,12 @@ export default function InstallPrompt() {
   const handleInstall = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
+    const choice = await deferredPrompt.userChoice;
     setDeferredPrompt(null);
     setShowBanner(false);
+    if (choice?.outcome === 'accepted') {
+      localStorage.setItem('ra_social_install_dismissed', 'true');
+    }
   };
 
   const dismiss = () => {

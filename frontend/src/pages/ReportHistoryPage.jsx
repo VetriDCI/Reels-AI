@@ -14,15 +14,31 @@ export default function ReportHistoryPage({ onBack, searchQuery = '' }) {
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setPage(1);
     try {
-      const res = await reportAPI.mine();
+      const res = await reportAPI.mine(1, 20);
       setReports(res.data?.data || []);
+      setHasMore(Boolean(res.data?.pagination?.hasMore));
     } catch (e) {
       setError(e.response?.data?.message || 'Failed to load report history');
     } finally { setLoading(false); }
+  };
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await reportAPI.mine(nextPage, 20);
+      setReports(prev => [...prev, ...(res.data?.data || [])]);
+      setPage(nextPage);
+      setHasMore(Boolean(res.data?.pagination?.hasMore));
+    } catch (e) { setError(e.response?.data?.message || 'Failed to load more reports'); }
+    finally { setLoadingMore(false); }
   };
   useEffect(() => { load(); }, []);
 
@@ -55,7 +71,7 @@ export default function ReportHistoryPage({ onBack, searchQuery = '' }) {
         {loading ? <div className="bg-white rounded-2xl p-8 text-center text-sm text-gray-500">Loading report history…</div> :
          error ? <div className="bg-white rounded-2xl p-6 text-center"><p className="text-sm text-red-600 mb-3">{error}</p><button onClick={load} className="px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-semibold">Try again</button></div> :
          searched.length === 0 ? <div className="bg-white rounded-2xl p-8 text-center shadow-sm"><Flag className="w-10 h-10 mx-auto text-gray-300 mb-3"/><p className="font-semibold text-gray-700">No reports found</p><p className="text-xs text-gray-500 mt-1">Posts you report will appear here.</p></div> :
-         <div className="space-y-3">{searched.map(report => <ReportItem key={report.id} report={report} />)}</div>}
+         <div className="space-y-3">{searched.map(report => <ReportItem key={report.id} report={report} />)}{hasMore && <div className="text-center pt-2"><button onClick={loadMore} disabled={loadingMore} className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold text-gray-700 disabled:opacity-50">{loadingMore ? 'Loading…' : 'Load more reports'}</button></div>}</div>}
       </div>
     </div>
   );

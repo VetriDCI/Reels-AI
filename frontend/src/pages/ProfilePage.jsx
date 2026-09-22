@@ -8,11 +8,17 @@ function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [bio, setBio] = useState(user?.bio || '');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = React.useRef(null);
 
   const handleSave = async () => {
+    const nextName = fullName.trim();
+    const nextBio = bio.trim();
+    if (nextName.length > 80) { setError('Full name must be 80 characters or less'); return; }
+    if (nextBio.length > 300) { setError('Bio must be 300 characters or less'); return; }
+    setError('');
     setLoading(true);
     try {
       const response = await authAPI.updateProfile({ fullName, bio });
@@ -20,7 +26,7 @@ function ProfilePage() {
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to update profile:', error);
-      alert('Failed to update profile');
+      setError(error.response?.data?.message || 'Failed to update profile');
     } finally {
       setLoading(false);
     }
@@ -31,8 +37,9 @@ function ProfilePage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (!file.type.startsWith('image/')) { alert('Please select an image file'); return; }
-    if (file.size > 10 * 1024 * 1024) { alert('Profile image must be under 10 MB'); return; }
+    if (!file.type.startsWith('image/')) { setError('Please select an image file'); return; }
+    if (file.size > 10 * 1024 * 1024) { setError('Profile image must be under 10 MB'); return; }
+    setError('');
     setUploadingAvatar(true);
     try {
       const upload = await uploadAPI.media(file);
@@ -42,7 +49,7 @@ function ProfilePage() {
       updateUser(response.data.data);
     } catch (error) {
       console.error('Failed to change profile image:', error);
-      alert(error.response?.data?.message || 'Failed to change profile image');
+      setError(error.response?.data?.message || 'Failed to change profile image');
     } finally {
       setUploadingAvatar(false);
     }
@@ -77,6 +84,7 @@ function ProfilePage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Full Name"
+                maxLength={80}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
               <textarea
@@ -84,6 +92,7 @@ function ProfilePage() {
                 onChange={(e) => setBio(e.target.value)}
                 placeholder="Write a short bio..."
                 rows="3"
+                maxLength={300}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
               />
               <div className="flex items-center justify-center space-x-3 mt-4">
@@ -116,6 +125,8 @@ function ProfilePage() {
             </>
           )}
 
+          {error && <p role="alert" className="w-full mt-4 text-center text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
           <div className="flex items-center space-x-6 mt-6">
             <div className="text-center">
               <p className="text-xl font-bold text-gray-900">{user?.postsCount || 0}</p>
@@ -134,9 +145,22 @@ function ProfilePage() {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
-          <div key={i} className="aspect-square bg-gray-200 rounded-lg"></div>
+        {(user?.posts || []).map((post) => (
+          <div key={post.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+            {post.mediaUrl ? (
+              post.mediaType?.startsWith('video') ? (
+                <video src={post.mediaUrl} className="w-full h-full object-cover" muted playsInline />
+              ) : (
+                <img src={post.mediaUrl} className="w-full h-full object-cover" alt={post.content || 'Post'} loading="lazy" />
+              )
+            ) : (
+              <div className="w-full h-full p-3 flex items-center justify-center text-sm text-gray-700 text-center">{post.content || 'Post'}</div>
+            )}
+          </div>
         ))}
+        {!user?.posts?.length && (
+          <div className="col-span-3 bg-white rounded-xl p-8 text-center text-sm text-gray-500">No posts yet</div>
+        )}
       </div>
     </div>
   );

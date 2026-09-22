@@ -9,14 +9,17 @@ const formatDay = (value) => new Intl.DateTimeFormat(undefined, { weekday: 'long
 export default function WatchHistoryPage({ onBack, searchQuery = '' }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [error, setError] = useState('');
 
   const load = async () => {
     setLoading(true);
+    setError('');
     try {
       const res = await watchHistoryAPI.list();
       setItems(res.data?.data || []);
     } catch (e) {
-      console.error('Watch history load error', e);
+      console.error('Watch history load error', e); setError(e.response?.data?.message || 'Unable to load watch history.');
     } finally {
       setLoading(false);
     }
@@ -37,7 +40,7 @@ export default function WatchHistoryPage({ onBack, searchQuery = '' }) {
 
   const clearAll = async () => {
     if (!items.length || !window.confirm('Clear your watch history?')) return;
-    try { await watchHistoryAPI.clear(); setItems([]); } catch (e) { alert(e.response?.data?.message || 'Unable to clear watch history'); }
+    try { setError(''); await watchHistoryAPI.clear(); setItems([]); } catch (e) { setError(e.response?.data?.message || 'Unable to clear watch history.'); }
   };
 
   return (
@@ -49,7 +52,8 @@ export default function WatchHistoryPage({ onBack, searchQuery = '' }) {
         {items.length > 0 && <button onClick={clearAll} className="text-xs font-semibold text-red-500 flex items-center gap-1"><Trash2 className="w-4 h-4" />Clear</button>}
       </header>
       <div className="px-4 py-3 text-xs text-gray-500 bg-purple-50 border-b border-purple-100">Showing the last 30 days. Older history is automatically removed.</div>
-      {loading ? <div className="py-20 text-center text-gray-400">Loading watch history…</div> : !items.length ? (
+      {error && <div role="alert" className="mx-4 mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}<button className="ml-2 underline" onClick={load}>Retry</button></div>}
+      {error ? <div className="py-12 text-center px-6"><p className="text-red-600 font-semibold">{error}</p><button onClick={load} className="mt-3 px-4 py-2 rounded-full bg-purple-600 text-white">Retry</button></div> : loading ? <div className="py-20 text-center text-gray-400">Loading watch history…</div> : !items.length ? (
         <div className="py-20 text-center px-6"><Clock3 className="w-12 h-12 mx-auto text-gray-300" /><p className="font-semibold text-gray-600 mt-3">No watch history</p><p className="text-sm text-gray-400 mt-1">Posts and videos you open will appear here.</p></div>
       ) : (
         <div className="px-4 py-4 space-y-6">

@@ -1,15 +1,22 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { monetizationAPI } from '../../services/api';
 import { ChevronLeft, Film, Users, Clock } from 'lucide-react';
 
 export default function TotalViewsPage({ user, onBack }) {
+  const [analytics, setAnalytics] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const load = async () => { try { setError(''); setLoading(true); const r = await monetizationAPI.analytics(30); setAnalytics(r.data?.data || null); } catch (e) { setError(e.response?.data?.message || 'Failed to load view analytics'); } finally { setLoading(false); } };
+  useEffect(() => { load(); }, []);
   const posts = user?.posts || [];
   const totalLikes = posts.reduce((sum, p) => sum + (p.likes?.length || 0), 0);
   const totalComments = posts.reduce((sum, p) => sum + (p.comments?.length || 0), 0);
-  const estReach = totalLikes * 8 + totalComments * 3;
+  const totalViews = Number(analytics?.totalViews ?? posts.reduce((sum, p) => sum + Number(p.viewCount || 0), 0));
+  const avgViews = Number(analytics?.averageViewsPerPost ?? (posts.length ? totalViews / posts.length : 0));
 
   const cards = [
-    { label: 'Reels Views (estimated)', value: estReach.toLocaleString(), icon: Film, note: 'based on likes/comments' },
-    { label: 'Posts Reach (estimated)', value: (totalLikes * 5).toLocaleString(), icon: Users, note: 'based on likes' },
+    { label: 'Total Views', value: totalViews.toLocaleString(), icon: Film, note: 'recorded post views' },
+    { label: 'Average Views / Post', value: avgViews.toLocaleString(undefined, { maximumFractionDigits: 1 }), icon: Users, note: 'based on recorded views' },
     { label: 'Total Engagement', value: (totalLikes + totalComments).toLocaleString(), icon: Clock, note: 'likes + comments' },
   ];
 
@@ -20,9 +27,8 @@ export default function TotalViewsPage({ user, onBack }) {
         <h1 className="text-lg font-bold">Total Views Analytics</h1>
       </div>
       <div className="p-4">
-        <div className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 mb-4">
-          ⚠️ No real impression-tracking exists on the backend yet — numbers below are estimates from likes/comments, not actual view counts.
-        </div>
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 mb-4 text-sm flex justify-between"><span>{error}</span><button onClick={load} className="font-semibold underline">Retry</button></div>}
+        {loading && <div className="bg-white rounded-xl p-4 text-sm text-gray-500 mb-4">Loading real view analytics...</div>}
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-2xl p-5 shadow-sm mb-3 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-400 to-blue-400 flex items-center justify-center">

@@ -1,34 +1,63 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, X } from 'lucide-react';
 import { postAPI, notificationAPI } from './services/api';
 
 // Pages
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import OtpVerificationPage from './pages/OtpVerificationPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import TwoFactorLoginPage from './pages/TwoFactorLoginPage';
-import SearchPage from './pages/SearchPage';
-import PublicProfilePage from './pages/PublicProfilePage';
-import NotificationsPage from './pages/NotificationsPage';
-import ChatPage from './pages/ChatPage';
-import ReelsPage from './pages/ReelsPage';
-import AIFeatures from './pages/AIFeatures';
-import MePage from './pages/MePage';
-import SavedPostsPage from './pages/SavedPostsPage';
-import DraftsPage from './pages/DraftsPage';
-import HashtagPage from './pages/HashtagPage';
-import ReportHistoryPage from './pages/ReportHistoryPage';
-import WatchHistoryPage from './pages/WatchHistoryPage';
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const OtpVerificationPage = lazy(() => import('./pages/OtpVerificationPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const TwoFactorLoginPage = lazy(() => import('./pages/TwoFactorLoginPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const ChatPage = lazy(() => import('./pages/ChatPage'));
+const ReelsPage = lazy(() => import('./pages/ReelsPage'));
+const AIFeatures = lazy(() => import('./pages/AIFeatures'));
+const MePage = lazy(() => import('./pages/MePage'));
+const SavedPostsPage = lazy(() => import('./pages/SavedPostsPage'));
+const DraftsPage = lazy(() => import('./pages/DraftsPage'));
+const HashtagPage = lazy(() => import('./pages/HashtagPage'));
+const ReportHistoryPage = lazy(() => import('./pages/ReportHistoryPage'));
+const WatchHistoryPage = lazy(() => import('./pages/WatchHistoryPage'));
 import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage';
 
 // Components
 import CreatePostModal from './components/CreatePostModal';
 import PostCard from './components/PostCard';
 import InstallPrompt from './components/InstallPrompt';
+
+const SEO_BY_TAB = {
+  home: ['RA Social – Connect, Share & Discover', 'RA Social is a social platform to connect, share posts, discover reels and interact with your community.'],
+  reels: ['RA Social Reels – Watch & Discover', 'Watch and discover short videos and reels on RA Social.'],
+  ai: ['RA Social AI – Create & Explore', 'Use RA Social AI features to create, explore and manage AI-powered content.'],
+  chat: ['RA Social Chat – Messages', 'Chat and share content with people on RA Social.'],
+  me: ['RA Social – My Profile', 'Manage your RA Social profile, posts and account settings.'],
+  notifications: ['RA Social – Notifications', 'View your latest RA Social notifications and activity.'],
+  search: ['RA Social – Search', 'Search posts, users and hashtags on RA Social.'],
+  saved: ['RA Social – Saved Posts', 'View your saved posts on RA Social.'],
+  drafts: ['RA Social – Drafts', 'Manage your saved post drafts on RA Social.'],
+  'public-profile': ['RA Social – Profile', 'View a public profile and its posts on RA Social.'],
+  hashtag: ['RA Social – Hashtag', 'Explore posts associated with a hashtag on RA Social.'],
+};
+
+function updateDocumentSEO(tab) {
+  if (typeof document === 'undefined') return;
+  const [title, description] = SEO_BY_TAB[tab] || SEO_BY_TAB.home;
+  document.title = title;
+  let meta = document.querySelector('meta[name=description]');
+  if (!meta) { meta = document.createElement('meta'); meta.name = 'description'; document.head.appendChild(meta); }
+  meta.setAttribute('content', description);
+  let ogTitle = document.querySelector('meta[property="og:title"]');
+  if (!ogTitle) { ogTitle = document.createElement('meta'); ogTitle.setAttribute('property', 'og:title'); document.head.appendChild(ogTitle); }
+  ogTitle.setAttribute('content', title);
+  let ogDescription = document.querySelector('meta[property="og:description"]');
+  if (!ogDescription) { ogDescription = document.createElement('meta'); ogDescription.setAttribute('property', 'og:description'); document.head.appendChild(ogDescription); }
+  ogDescription.setAttribute('content', description);
+}
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
@@ -47,6 +76,8 @@ function AppContent() {
   const [draftToEdit, setDraftToEdit] = useState(null);
   const [hashtagName, setHashtagName] = useState('');
   const [reportHistory, setReportHistory] = useState(false);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  useEffect(() => { updateDocumentSEO(activeTab); }, [activeTab]);
   const historyReadyRef = useRef(false);
   const suppressHistoryRef = useRef(false);
 
@@ -120,23 +151,50 @@ function AppContent() {
   };
 
   useEffect(() => {
+    let active = true;
+    let inFlight = false;
     const refreshUnreadNotifications = async () => {
+      if (!active || inFlight || document.visibilityState === 'hidden' || !navigator.onLine) return;
+      inFlight = true;
       try {
-        const response = await notificationAPI.getNotifications();
-        setUnreadNotificationCount(Number(response.data?.data?.unreadCount || 0));
+        const response = await notificationAPI.getNotifications({ page: 1, limit: 1 });
+        if (active) setUnreadNotificationCount(Number(response.data?.data?.unreadCount || 0));
       } catch (error) {
-        console.error('Failed to fetch notification count:', error);
+        if (active && error?.code !== 'ERR_CANCELED') console.error('Failed to fetch notification count:', error);
+      } finally {
+        inFlight = false;
       }
     };
 
     refreshUnreadNotifications();
     const handleNotificationUpdate = () => refreshUnreadNotifications();
+    const handleVisibility = () => { if (document.visibilityState === 'visible') refreshUnreadNotifications(); };
     window.addEventListener('ra:notifications-updated', handleNotificationUpdate);
+    document.addEventListener('visibilitychange', handleVisibility);
     const intervalId = window.setInterval(refreshUnreadNotifications, 30000);
     return () => {
+      active = false;
       window.removeEventListener('ra:notifications-updated', handleNotificationUpdate);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.clearInterval(intervalId);
     };
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handlePageShow = () => setIsOffline(!navigator.onLine);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
 
   useEffect(() => {
@@ -166,6 +224,7 @@ function AppContent() {
 
   if (!user) {
     return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">Loading…</div>}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -175,6 +234,7 @@ function AppContent() {
         <Route path="/2fa-login" element={<TwoFactorLoginPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      </Suspense>
     );
   }
 
@@ -184,6 +244,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       {!hideTopBar && (
         <TopBar
           logout={logout}
@@ -198,7 +259,8 @@ function AppContent() {
         />
       )}
 
-      <main className={isFullScreenTab ? '' : 'pb-20'}>
+      <Suspense fallback={<div className="min-h-[50vh] flex items-center justify-center" role="status" aria-live="polite">Loading…</div>}>
+      <main id="main-content" tabIndex={-1} className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} searchQuery={contextSearchQuery} />}
         {activeTab === 'reels' && <ReelsPage onNotifications={() => navigateTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} searchOpen={contextSearchOpen} searchQuery={contextSearchQuery} onSearchChange={setContextSearchQuery} onCloseSearch={closeContextSearch} initialPostId={reelTarget?.id} />}
         {activeTab === 'ai' && <AIFeatures searchQuery={contextSearchQuery} />}
@@ -213,6 +275,7 @@ function AppContent() {
         {activeTab === 'hashtag' && <HashtagPage name={hashtagName} onBack={() => navigateTab(searchSource || 'home')} onOpenReel={openReel} />}
         {activeTab === 'public-profile' && <PublicProfilePage userId={publicProfileId} onBack={() => navigateTab(searchSource || 'home')} />}
       </main>
+      </Suspense>
 
       {showCreateModal && (
         <CreatePostModal userId={user?.id} isCreator={Boolean(user?.channelNumber)} initialDraft={draftToEdit} onClose={() => { setShowCreateModal(false); setDraftToEdit(null); }} onDraftSaved={() => {}} onPostCreated={() => setFeedRefresh((prev) => prev + 1)} />
@@ -223,6 +286,12 @@ function AppContent() {
         <button onClick={() => openSearch('')} aria-label="Search" className="fixed right-4 top-4 z-[70] w-11 h-11 rounded-full bg-white/95 shadow-lg border flex items-center justify-center">
           <Search className="w-5 h-5 text-gray-700" />
         </button>
+      )}
+      {isOffline && (
+        <div role="status" aria-live="polite" className="fixed bottom-20 left-3 right-3 z-[80] mx-auto max-w-md rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+          <div className="font-semibold">You’re offline</div>
+          <div className="text-xs mt-0.5">Some live features are unavailable. Saved app content can still open.</div>
+        </div>
       )}
       <InstallPrompt />
     </div>
@@ -302,6 +371,8 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTa
           <button
             key={item.id}
             onClick={() => handleNavClick(item.id)}
+            aria-label={item.label}
+            aria-current={activeTab === item.id ? 'page' : undefined}
             className={`flex flex-col items-center p-2 ${
               item.isSpecial 
                 ? 'bg-gradient-to-r from-pink-500 to-blue-500 rounded-full p-3 -mt-4 shadow-lg' 
@@ -335,8 +406,9 @@ function HomeFeed({ posts, setPosts, refreshKey, onOpenReel, searchQuery = '' })
 
   const handleLike = async (postId) => {
     try {
-      await postAPI.like(postId);
-      fetchPosts();
+      const response = await postAPI.like(postId);
+      const likesCount = response.data?.data?.likesCount;
+      setPosts(prev => prev.map(post => post.id === postId && typeof likesCount === 'number' ? { ...post, likesCount } : post));
     } catch (error) {
       console.error('Failed to like:', error);
     }

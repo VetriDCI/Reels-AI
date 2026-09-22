@@ -99,7 +99,7 @@ export default function MonetizationPage({ onBack }) {
                 disabled={!data.eligible || data.status !== 'eligible' || applying}
                 className="w-full mt-5 py-3 rounded-xl bg-gradient-to-r from-pink-500 to-blue-500 text-white font-semibold disabled:bg-gray-300 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed"
               >
-                {applying ? 'Submitting...' : 'Monetization Apply'}
+                {applying ? 'Submitting...' : data.status === 'pending' ? 'Application Pending' : data.status === 'approved' ? 'Monetization Active' : 'Monetization Apply'}
               </button>
             </div>
 

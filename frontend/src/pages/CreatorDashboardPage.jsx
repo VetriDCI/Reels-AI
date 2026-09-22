@@ -10,14 +10,16 @@ export default function CreatorDashboardPage({ onBack }) {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
+      setError('');
       const [u, a] = await Promise.all([api.get('/auth/me'), monetizationAPI.analytics(30)]);
       setUser(u.data?.data || null);
       setAnalytics(a.data?.data || null);
       setLastUpdated(new Date());
-    } catch (e) { console.error('Creator dashboard load error', e); }
+    } catch (e) { console.error('Creator dashboard load error', e); setError(e.response?.data?.message || 'Failed to load creator analytics'); }
     finally { setLoading(false); }
   }, []);
 
@@ -26,16 +28,18 @@ export default function CreatorDashboardPage({ onBack }) {
   const posts = user?.posts || [];
   const videoCount = posts.filter(p => p.mediaType === 'video').length;
   const imageCount = posts.filter(p => p.mediaType !== 'video').length;
-  const views = posts.reduce((s, p) => s + Number(p.viewCount || 0), 0);
+  const views = Number(analytics?.totalViews ?? posts.reduce((s, p) => s + Number(p.viewCount || 0), 0));
   const likes = posts.reduce((s, p) => s + (p.likes?.length || 0), 0);
-  const comments = posts.reduce((s, p) => s + (p.comments?.length || 0), 0);
+  const comments = Number(analytics?.totalComments ?? posts.reduce((s, p) => s + (p.comments?.length || 0), 0));
   const periodEarnings = useMemo(() => Number(analytics?.periodEarnings ?? 0), [analytics]);
 
   const cards = [
     ['Followers', num(user?.followersCount), Users],
     ['Total posts', num(user?.postsCount), BarChart3],
     ['Views', num(views), Eye],
-    ['Engagement', num(likes + comments), MessageCircle],
+    ['Engagement', num(Number(analytics?.engagement ?? (likes + comments))), MessageCircle],
+    ['Engagement rate', `${Number(analytics?.engagementRate ?? 0).toFixed(2)}%`, BarChart3],
+    ['Avg. views/post', num(analytics?.averageViewsPerPost ?? 0), Eye],
     ['30-day earnings', `$${periodEarnings.toFixed(2)}`, CircleDollarSign],
     ['Balance', `$${Number(user?.earnings || 0).toFixed(2)}`, Wallet],
   ];
@@ -48,6 +52,7 @@ export default function CreatorDashboardPage({ onBack }) {
     </header>
 
     <div className="p-4 space-y-4">
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm flex items-center justify-between gap-3"><span>{error}</span><button onClick={load} className="font-semibold underline">Retry</button></div>}
       <div className="bg-gradient-to-r from-pink-500 to-blue-500 text-white rounded-2xl p-5 shadow-sm">
         <p className="text-xs uppercase opacity-80 font-semibold">Creator Channel</p>
         <h2 className="text-xl font-bold mt-1">{user?.channelName || user?.fullName || user?.username}</h2>

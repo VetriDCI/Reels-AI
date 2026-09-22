@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "RA Social",
   "short_name": "RA Social",
   "description": "RA Social - connect, share and create with your community",
@@ -6,6 +7,10 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["social", "entertainment"],
+  "prefer_related_applications": false,
   "background_color": "#ffffff",
   "theme_color": "#ec4899",
   "icons": [

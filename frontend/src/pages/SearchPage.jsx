@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Search, X, Clock3, Trash2, ArrowUpRight, ArrowLeft } from 'lucide-react';
-import api, { followAPI } from '../services/api';
+import { searchAPI, followAPI } from '../services/api';
 
 const HISTORY_KEY = 'ra_social_search_history';
 const MAX_HISTORY = 12;
@@ -19,6 +19,7 @@ function SearchPage({ initialQuery = '', source = 'home', onBack, onOpenProfile,
   const [loading, setLoading] = useState(false);
   const [following, setFollowing] = useState({});
   const [error, setError] = useState('');
+  const [searchType, setSearchType] = useState(source === 'reels' ? 'posts' : 'all');
 
 
   useEffect(() => {
@@ -26,7 +27,8 @@ function SearchPage({ initialQuery = '', source = 'home', onBack, onOpenProfile,
     setQuery(value);
     setError('');
     setResults(null);
-    if (value) handleSearch(value);
+    setSearchType(source === 'reels' ? 'posts' : 'all');
+    if (value) handleSearch(value, source === 'reels' ? 'posts' : 'all');
     // Search should run whenever another page opens Search with a new query.
   }, [initialQuery]);
 
@@ -49,16 +51,17 @@ function SearchPage({ initialQuery = '', source = 'home', onBack, onOpenProfile,
     localStorage.removeItem(HISTORY_KEY);
   };
 
-  const handleSearch = async (term = query) => {
+  const handleSearch = async (term = query, requestedType = searchType) => {
     const q = term.trim();
-    if (!q) { setResults(null); return; }
+    if (!q) { setResults(null); setError(''); return; }
+    if (q.length < 2) { setResults({ users: [], posts: [], hashtags: [] }); setError('Enter at least 2 characters to search.'); return; }
     setQuery(q);
     saveHistory(q);
     setLoading(true);
     setError('');
     try {
-      // A normal search is one unified search. There are no All/User/Post/Hashtag tabs.
-      const response = await api.get('/search', { params: { query: q, type: source === 'reels' ? 'posts' : 'all' } });
+      const type = source === 'reels' ? 'posts' : requestedType;
+      const response = await searchAPI.search(q, type);
       const data = response.data?.data || {};
       setResults({
         users: Array.isArray(data.users) ? data.users : [],
@@ -73,6 +76,11 @@ function SearchPage({ initialQuery = '', source = 'home', onBack, onOpenProfile,
   };
 
   const clearSearch = () => { setQuery(''); setResults(null); setError(''); };
+
+  const runTypeSearch = (type) => {
+    setSearchType(type);
+    if (query.trim()) handleSearch(query, type);
+  };
 
   const resultCount = (results?.users?.length || 0) + (results?.posts?.length || 0) + (results?.hashtags?.length || 0);
 
@@ -98,6 +106,16 @@ function SearchPage({ initialQuery = '', source = 'home', onBack, onOpenProfile,
             {loading ? '...' : 'Search'}
           </button>
         </div>
+
+        {source !== 'reels' && (
+          <div className="flex gap-2 mt-4 overflow-x-auto pb-1" role="tablist" aria-label="Search type">
+            {[['all','All'],['users','Users'],['posts','Posts'],['hashtags','Hashtags']].map(([type,label]) => (
+              <button key={type} role="tab" aria-selected={searchType === type} onClick={() => runTypeSearch(type)} className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap border ${searchType === type ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {!query.trim() && !results && (
           <section className="mt-6">

@@ -89,13 +89,15 @@ export default function ChatPage({ searchQuery = '' }) {
   }, [otherUser?.id]);
 
   const fetchChats = async () => { try { const r = await chatAPI.getChats(); setChats(r.data.data || []); } catch (e) { console.error('Get chats failed', e); } finally { setLoading(false); } };
-  const fetchMessages = async (id) => { try { const r = await chatAPI.getMessages(id); setMessages(r.data.data || []); await api.post(`/chats/${id}/read`); } catch (e) { console.error('Get messages failed', e); } };
+  const fetchMessages = async (id) => { try { const r = await chatAPI.getMessages(id, { page: 1, limit: 50 }); setMessages(r.data.data || []); await api.post(`/chats/${id}/read`); } catch (e) { console.error('Get messages failed', e); } };
   const fetchVibes = async () => { try { const r = await vibeAPI.getAll(); setVibes(r.data.data || []); } catch (e) { console.error('Get vibes failed', e); } };
 
   useEffect(() => {
     const socket = io(SOCKET_URL, { auth: { token: localStorage.getItem('token') }, transports: ['websocket', 'polling'] });
     socketRef.current = socket;
     socket.on('connect_error', e => console.warn('Chat socket unavailable:', e.message));
+    socket.on('connect', () => { const active = selectedChatRef.current?.id; if (active) socket.emit('join_chat', active); });
+    socket.io.on('reconnect', () => { const active = selectedChatRef.current?.id; if (active) { socket.emit('join_chat', active); fetchChats(); fetchMessages(active); } });
     socket.on('new_message', data => {
       if (selectedChatRef.current?.id !== data.chatId) return;
       setMessages(prev => prev.some(m => m.id === data.id) ? prev : [...prev, data]);
@@ -167,7 +169,16 @@ export default function ChatPage({ searchQuery = '' }) {
   const startChatWith = async u => { try { const r = await chatAPI.createChat(u.id); setNewChatOpen(false); await fetchChats(); setSelectedChat(r.data.data); } catch (e) { alert(e.response?.data?.message || 'Could not start chat'); } };
   const searchByPhone = async () => { const q = phoneQuery.trim(); if (!q) return; setPhoneSearching(true); try { const r = await searchAPI.search(q, 'users'); const us = (r.data.data?.users || []).filter(u => u.id !== user?.id); if (us[0]) { await startChatWith(us[0]); setPhoneQuery(''); } else { setInviteNumber(q); alert('No RA Social account found. You can invite them.'); } } finally { setPhoneSearching(false); } };
   const inviteViaWhatsApp = () => { const digits = inviteNumber.replace(/\D/g, ''); if (!digits) return alert('Enter a mobile number'); window.open(`https://wa.me/${digits}?text=${encodeURIComponent(`Join me on RA Social! ${window.location.origin}`)}`, '_blank', 'noopener,noreferrer'); };
-  const galleryChanged = e => { const selected = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/')); e.target.value = ''; if (!selected.length) return; setGalleryFiles(prev => [...prev, ...selected].slice(0, 10)); setGalleryFile(selected[0]); };
+  const galleryChanged = e => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length > 10) { alert('You can attach up to 10 files at once.'); return; }
+    const invalid = files.find(f => (!f.type.startsWith('image/') && !f.type.startsWith('video/')) || f.size > 50 * 1024 * 1024);
+    if (invalid) { alert('Each attachment must be an image or video under 50 MB.'); return; }
+    if (!files.length) return;
+    setGalleryFiles(prev => [...prev, ...files].slice(0, 10));
+    setGalleryFile(files[0]);
+  };
   const applyChatEdit = (editedFile) => { if (chatEditIndex == null) return; setGalleryFiles(prev => prev.map((f, i) => i === chatEditIndex ? editedFile : f)); setGalleryFile(editedFile); setChatEditIndex(null); };
   const appendEmoji = e => setNewMessage(v => v + e);
   const applyVibeEdit = (editedFile) => {
@@ -227,7 +238,7 @@ export default function ChatPage({ searchQuery = '' }) {
         {emojiOpen && <div className="px-3 pt-2 bg-white border-t flex flex-wrap gap-1">{EMOJIS.map(e => <button key={e} onClick={() => appendEmoji(e)} className="text-2xl p-1">{e}</button>)}</div>}
         {galleryFiles.length > 0 && <div className="px-3 pt-2 bg-white text-xs text-gray-500 flex items-center gap-2 overflow-x-auto"><span className="shrink-0">{galleryFiles.length} media selected</span>{galleryFiles.map((f,i)=><button key={`${f.name}-${i}`} onClick={() => setChatEditIndex(i)} className="shrink-0 px-2 py-1 rounded-full bg-purple-50 text-purple-700 font-semibold">Edit {i+1}</button>)}<button onClick={() => { setGalleryFiles([]); setGalleryFile(null); }} className="text-red-500 shrink-0">Clear</button></div>}
         {chatEditIndex != null && galleryFiles[chatEditIndex] && <MediaEditor file={galleryFiles[chatEditIndex]} mediaType={galleryFiles[chatEditIndex].type?.startsWith('video/') ? 'video' : 'image'} onApply={applyChatEdit} onClose={() => setChatEditIndex(null)} />}
-        <footer className="shrink-0 p-2 md:p-3 border-t bg-white"><div className="flex items-center gap-1.5 max-w-4xl mx-auto"><button onClick={() => galleryRef.current?.click()} className="p-2 rounded-full hover:bg-gray-100"><Paperclip className="w-5 h-5 text-gray-500" /></button><input ref={galleryRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={galleryChanged} /><button onClick={() => setEmojiOpen(v => !v)} className="p-2 rounded-full hover:bg-gray-100"><Smile className="w-5 h-5 text-gray-500" /></button><input value={newMessage} onChange={e => { setNewMessage(e.target.value); emitTyping(true); }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder="Type a message..." className="flex-1 min-w-0 px-3 md:px-4 py-2.5 bg-gray-100 rounded-full outline-none text-sm" /><button onClick={sendMessage} disabled={sending || (!newMessage.trim() && !galleryFile)} className="shrink-0 p-3 bg-purple-600 text-white rounded-full disabled:opacity-50"><Send className="w-5 h-5" /></button></div></footer>
+        <footer className="shrink-0 p-2 md:p-3 border-t bg-white"><div className="flex items-center gap-1.5 max-w-4xl mx-auto"><button onClick={() => galleryRef.current?.click()} className="p-2 rounded-full hover:bg-gray-100"><Paperclip className="w-5 h-5 text-gray-500" /></button><input ref={galleryRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={galleryChanged} /><button onClick={() => setEmojiOpen(v => !v)} className="p-2 rounded-full hover:bg-gray-100"><Smile className="w-5 h-5 text-gray-500" /></button><input value={newMessage} onChange={e => { setNewMessage(e.target.value); emitTyping(true); }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder="Type a message..." maxLength={5000} className="flex-1 min-w-0 px-3 md:px-4 py-2.5 bg-gray-100 rounded-full outline-none text-sm" /><button onClick={sendMessage} disabled={sending || (!newMessage.trim() && !galleryFile)} className="shrink-0 p-3 bg-purple-600 text-white rounded-full disabled:opacity-50"><Send className="w-5 h-5" /></button></div></footer>
       </> : <div className="flex-1 items-center justify-center hidden md:flex text-center"><div><MessageCircle className="w-16 h-16 mx-auto text-gray-300 mb-3" /><h3 className="text-xl font-semibold text-gray-700">Select a chat</h3><p className="text-gray-500 mt-1">Choose a conversation</p></div></div>}
     </section>
     {newChatOpen && <div className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center"><div className="bg-white w-full sm:max-w-md max-h-[90dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"><div className="p-4 border-b flex justify-between"><b>New chat</b><button onClick={() => setNewChatOpen(false)}><X /></button></div><div className="p-4 space-y-4"><div className="flex gap-2"><input value={phoneQuery} onChange={e => setPhoneQuery(e.target.value)} placeholder="Mobile number (+91...)" inputMode="tel" className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm" /><button onClick={searchByPhone} disabled={phoneSearching} className="px-4 rounded-full bg-green-500 text-white text-sm">{phoneSearching ? '...' : 'Chat'}</button></div><div className="border-t pt-4"><input value={inviteNumber} onChange={e => setInviteNumber(e.target.value)} placeholder="Number to invite" className="w-full bg-gray-100 rounded-full px-4 py-2 text-sm mb-2" /><button onClick={inviteViaWhatsApp} className="w-full py-2 bg-green-500 text-white rounded-full text-sm font-semibold">Invite via WhatsApp</button></div></div></div></div>}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Heart, MessageCircle, User, Bell, Trash2, X } from 'lucide-react';
 import { notificationAPI } from '../services/api';
 
@@ -25,24 +25,44 @@ function NotificationsPage({ searchQuery = '' }) {
   const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+
+  const fetchNotifications = useCallback(async (targetPage = 1, append = false) => {
+    if (append) setLoadingMore(true); else setLoading(true);
+    setError('');
+    try {
+      const response = await notificationAPI.getNotifications({ page: targetPage, limit: 20 });
+      const data = response.data?.data || {};
+      const next = data.notifications || [];
+      setNotifications(prev => append ? [...prev, ...next.filter(item => !prev.some(existing => existing.id === item.id))] : next);
+      setPage(targetPage);
+      setHasMore(Boolean(data.pagination?.hasMore));
+
+      // Only mark notifications read after the first page has loaded successfully.
+      // This avoids clearing the unread badge when the initial fetch itself failed.
+      if (!append) {
+        try {
+          await notificationAPI.markAsRead();
+          window.dispatchEvent(new Event('ra:notifications-updated'));
+        } catch (readError) {
+          // Keep the list usable even if marking read fails; the next refresh can retry it.
+          console.error('Failed to mark notifications as read:', readError);
+        }
+      }
+    } catch (fetchError) {
+      console.error('Failed to fetch notifications:', fetchError);
+      setError('Could not load notifications. Please try again.');
+    } finally {
+      if (append) setLoadingMore(false); else setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchNotifications();
-    notificationAPI.markAsRead().then(() => {
-      window.dispatchEvent(new Event('ra:notifications-updated'));
-    }).catch(() => {});
-  }, []);
-
-  const fetchNotifications = async () => {
-    try {
-      const response = await notificationAPI.getNotifications();
-      setNotifications(response.data.data.notifications || []);
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [fetchNotifications]);
 
   const visibleNotifications = notifications.filter((item) => { const q = String(searchQuery || '').trim().toLowerCase(); if (!q) return true; return [item.message, item.sender?.fullName, item.sender?.username, item.post?.content, item.type].filter(Boolean).join(' ').toLowerCase().includes(q); });
 
@@ -102,6 +122,13 @@ function NotificationsPage({ searchQuery = '' }) {
 
       {loading ? (
         <div className="text-center py-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" /><p className="text-gray-500 mt-4">Loading notifications...</p></div>
+      ) : error ? (
+        <div className="text-center py-20">
+          <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-700">Unable to load notifications</h3>
+          <p className="text-gray-500 mt-2">{error}</p>
+          <button onClick={() => fetchNotifications(1, false)} className="mt-5 px-5 py-2.5 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700">Retry</button>
+        </div>
       ) : visibleNotifications.length === 0 ? (
         <div className="text-center py-20"><Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" /><h3 className="text-xl font-semibold text-gray-700">No notifications yet</h3><p className="text-gray-500 mt-2">When someone likes or comments on your posts, you'll see it here</p></div>
       ) : (
@@ -125,6 +152,18 @@ function NotificationsPage({ searchQuery = '' }) {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {!loading && !error && hasMore && visibleNotifications.length > 0 && (
+        <div className="max-w-3xl mx-auto flex justify-center mt-6">
+          <button
+            onClick={() => fetchNotifications(page + 1, true)}
+            disabled={loadingMore}
+            className="px-5 py-2.5 rounded-xl border border-gray-200 bg-white font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          >
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </button>
         </div>
       )}
 

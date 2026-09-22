@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, Bell, Mail } from 'lucide-react';
+import { ChevronLeft, Bell, Mail, CheckCircle2 } from 'lucide-react';
 
 const KEY = 'ra_social_notifications';
 
@@ -22,7 +22,13 @@ export default function NotificationsSettingsPage({ onBack }) {
   const toggle = (key) => {
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
-    localStorage.setItem(KEY, JSON.stringify(next));
+    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
+  };
+
+  const reset = () => {
+    const next = { newFollower: true, weeklyReports: true, productUpdates: true, promotional: false };
+    setPrefs(next);
+    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
   };
 
   const Toggle = ({ active, onClick }) => (
@@ -69,9 +75,10 @@ export default function NotificationsSettingsPage({ onBack }) {
           </div>
         </div>
 
-        <p className="text-xs text-gray-400 text-center mt-4">
-          ⚠️ No push/email delivery service is connected yet — these preferences are saved for when that's added.
-        </p>
+        <div className="mt-4 flex items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
+          <p className="text-xs text-blue-700"><CheckCircle2 className="inline w-4 h-4 mr-1" />Preferences are saved on this device.</p>
+          <button onClick={reset} className="text-xs font-semibold text-blue-700 underline">Reset</button>
+        </div>
       </div>
     </div>
   );

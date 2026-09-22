@@ -49,6 +49,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
   };
   const addComment = async () => {
     const text = comment.trim(); if (!text) return;
+    if (text.length > 1000) { alert('Comment cannot exceed 1000 characters'); return; }
     try {
       const res = await postAPI.addComment(post.id, replyTo ? `${replyTo.user?.username ? '@' + replyTo.user.username + ' ' : ''}${text}` : text);
       setComments(prev => [res.data.data, ...prev]); setComment(''); setReplyTo(null);
@@ -117,7 +118,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
 
       <div className="relative px-3 py-3 border-t">
         <div className="flex items-center gap-1.5 pr-12 overflow-x-auto whitespace-nowrap">
-          <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
+          <button onClick={onLike} className="action-btn hover:text-red-500" aria-label="Like post"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
           <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
           <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
           <button onClick={() => setShareChatOpen(true)} className="action-btn hover:text-purple-600" title="Share to Chat"><Send className="w-5 h-5" /><span>Chat</span></button>
@@ -143,7 +144,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
             {!commentLoading && comments.length === 0 && <p className="text-sm text-gray-400 text-center py-8">No comments yet.</p>}
             {comments.map(c => <div key={c.id} className="rounded-xl bg-gray-50 p-3"><div className="flex items-start gap-2"><img src={c.user?.avatarUrl || `https://i.pravatar.cc/80?u=${c.user?.id}`} className="w-8 h-8 rounded-full" alt="" /><div className="flex-1"><b className="text-sm">{c.user?.fullName || c.user?.username}</b><p className="text-sm text-gray-700 mt-1 break-words">{c.content}</p><div className="flex gap-4 mt-2"><button className="text-xs text-gray-500 hover:text-red-500"><Heart className="inline w-3.5 h-3.5 mr-1" />Like</button><button onClick={() => { setReplyTo(c); setComment(''); }} className="text-xs text-gray-500 hover:text-purple-600"><Reply className="inline w-3.5 h-3.5 mr-1" />Reply</button></div></div></div></div>)}
           </div>
-          <div className="p-3 border-t">{replyTo && <div className="flex items-center justify-between text-xs text-purple-600 mb-2">Replying to {replyTo.user?.fullName || replyTo.user?.username}<button onClick={() => setReplyTo(null)}><X className="w-4 h-4" /></button></div>}<div className="flex gap-2"><input autoFocus value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addComment()} placeholder={replyTo ? 'Write a reply…' : 'Write a comment…'} className="flex-1 border rounded-full px-4 py-2 text-sm outline-none" /><button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white"><Send className="w-4 h-4" /></button></div></div>
+          <div className="p-3 border-t">{replyTo && <div className="flex items-center justify-between text-xs text-purple-600 mb-2">Replying to {replyTo.user?.fullName || replyTo.user?.username}<button onClick={() => setReplyTo(null)}><X className="w-4 h-4" /></button></div>}<div className="flex gap-2"><input autoFocus value={comment} onChange={e => setComment(e.target.value.slice(0, 1000))} onKeyDown={e => e.key === 'Enter' && addComment()} placeholder={replyTo ? 'Write a reply…' : 'Write a comment…'} className="flex-1 border rounded-full px-4 py-2 text-sm outline-none" /><button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white"><Send className="w-4 h-4" /></button></div></div>
         </div>
       </div>}
       <ShareToChatModal open={shareChatOpen} onClose={() => setShareChatOpen(false)} item={{ ...post, currentUserId: user?.id }} />

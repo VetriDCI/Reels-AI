@@ -4,10 +4,23 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 20000,
   headers: {
     'Content-Type': 'application/json'
   }
 });
+
+const RETRYABLE_METHODS = new Set(['get', 'head', 'options']);
+const MAX_RETRIES = 2;
+const RETRY_BASE_MS = 350;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const isRetryableError = (error, config) => {
+  if (!config || !RETRYABLE_METHODS.has(String(config.method || 'get').toLowerCase())) return false;
+  if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') return false;
+  const status = error?.response?.status;
+  return !error?.response || status === 408 || status === 425 || status === 429 || status >= 500;
+};
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -22,6 +35,35 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Centralized auth-expiry handling: clear stale credentials and return the user
+// to the login flow instead of leaving the UI in a broken authenticated state.
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error?.config;
+    if (isRetryableError(error, config)) {
+      const retryCount = Number(config.__raRetryCount || 0);
+      if (retryCount < MAX_RETRIES) {
+        config.__raRetryCount = retryCount + 1;
+        const retryAfter = Number(error?.response?.headers?.['retry-after']);
+        const delay = Number.isFinite(retryAfter) && retryAfter >= 0
+          ? Math.min(retryAfter * 1000, 5000)
+          : RETRY_BASE_MS * (2 ** retryCount) + Math.floor(Math.random() * 100);
+        await sleep(delay);
+        return api(config);
+      }
+    }
+    if (error?.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.dispatchEvent(new CustomEvent('ra-social:session-expired'));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const authAPI = {
   verifyTwoFactorLogin: (challengeToken, code) => api.post('/auth/2fa/verify-login', { challengeToken, code }),
@@ -42,13 +84,35 @@ export const accountAPI = {
   exportData: () => api.get('/account/export'),
   delete: (password) => api.delete('/account', { data: { password } })
 };
+const UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+const UPLOAD_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'
+]);
+
 export const uploadAPI = {
-  media: (file) => {
+  media: (file, onUploadProgress) => {
+    if (!(file instanceof File)) {
+      return Promise.reject(new Error('Please select a valid media file.'));
+    }
+    const mime = String(file.type || '').toLowerCase();
+    if (!UPLOAD_TYPES.has(mime)) {
+      return Promise.reject(new Error('Unsupported media type. Use JPG, PNG, GIF, WEBP, MP4, WEBM, or MOV.'));
+    }
+    if (file.size <= 0) {
+      return Promise.reject(new Error('The selected file is empty.'));
+    }
+    if (file.size > UPLOAD_MAX_BYTES) {
+      return Promise.reject(new Error('Media must be 50 MB or smaller.'));
+    }
+
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', file, file.name || 'upload');
     return api.post('/posts/upload', formData, {
       // Let Axios/browser set the multipart boundary automatically.
-      headers: {}
+      headers: {},
+      timeout: 120000,
+      onUploadProgress
     });
   }
 };
@@ -82,7 +146,7 @@ export const watchHistoryAPI = {
 
 export const reportAPI = {
   create: (postId, reason) => api.post(`/posts/${postId}/report`, { reason }),
-  mine: () => api.get('/reports/mine'),
+  mine: (page = 1, limit = 20) => api.get('/reports/mine', { params: { page, limit } }),
 };
 
 export const monetizationAPI = {
@@ -92,23 +156,23 @@ export const monetizationAPI = {
 };
 
 export const payoutAPI = {
-  list: () => api.get('/payouts'),
+  list: (page = 1, limit = 20) => api.get('/payouts', { params: { page, limit } }),
   request: (data) => api.post('/payouts', data)
 };
 
 export const searchAPI = {
-  search: (query, type = 'all') => {
+  search: (query, type = 'all', page = 1, limit = 20) => {
     const value = String(query || '').trim();
     if (!value) return Promise.reject(new Error('Search query is required'));
     return api.get('/search', {
-      params: { query: value, q: value, type: String(type || 'all').toLowerCase() },
+      params: { query: value, q: value, type: String(type || 'all').toLowerCase(), page, limit },
       timeout: 15000
     });
   }
 };
 
 export const notificationAPI = {
-  getNotifications: () => api.get('/notifications'),
+  getNotifications: (params = {}) => api.get('/notifications', { params }),
   markAsRead: () => api.put('/notifications/read'),
   deleteOne: (id) => api.delete(`/notifications/${id}`),
   deleteAll: () => api.delete('/notifications')

@@ -32,7 +32,7 @@ export const aiAPI = {
     files.forEach((file) => formData.append('files', file));
     return api.post('/ai/upload', formData);
   },
-  history: () => api.get('/ai/history'),
+  history: (page = 1, limit = 20) => api.get('/ai/history', { params: { page, limit } }),
   getConversation: (id) => api.get(`/ai/history/${id}`),
   deleteConversation: (id) => api.delete(`/ai/history/${id}`),
 };

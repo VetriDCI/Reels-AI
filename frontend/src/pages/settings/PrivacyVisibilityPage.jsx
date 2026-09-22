@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, Eye, CheckCircle2, Shield, Download } from 'lucide-react';
+import { accountAPI, userSafetyAPI } from '../../services/api';
 
 const KEY = 'ra_social_privacy';
 
@@ -13,11 +14,32 @@ function loadPrefs() {
 
 export default function PrivacyVisibilityPage({ onBack }) {
   const [prefs, setPrefs] = useState(loadPrefs());
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
 
   const toggle = (key) => {
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
-    localStorage.setItem(KEY, JSON.stringify(next));
+    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
+    setMessage('Saved on this device.');
+  };
+
+  const downloadData = async () => {
+    setBusy(true); setMessage('');
+    try {
+      const res = await accountAPI.exportData();
+      const blob = new Blob([JSON.stringify(res.data.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = `ra-social-account-data-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      setMessage('Your data export is ready.');
+    } catch (e) { setMessage(e.response?.data?.message || 'Data download failed.'); }
+    finally { setBusy(false); }
+  };
+
+  const openBlockedUsers = async () => {
+    setBusy(true); setMessage('Blocked-user management is available from Chat safety controls.');
+    setTimeout(() => setBusy(false), 300);
   };
 
   const Toggle = ({ active, onClick }) => (
@@ -65,7 +87,7 @@ export default function PrivacyVisibilityPage({ onBack }) {
             <Toggle active={prefs.activityStatus} onClick={() => toggle('activityStatus')} />
           </div>
 
-          <button className="flex items-center gap-2 py-3 w-full text-left">
+          <button onClick={openBlockedUsers} disabled={busy} className="flex items-center gap-2 py-3 w-full text-left disabled:opacity-50">
             <Shield className="w-5 h-5 text-purple-400" />
             <div>
               <p className="font-medium text-sm">Blocked Users</p>
@@ -73,7 +95,7 @@ export default function PrivacyVisibilityPage({ onBack }) {
             </div>
           </button>
 
-          <button className="flex items-center gap-2 py-3 w-full text-left">
+          <button onClick={openBlockedUsers} disabled={busy} className="flex items-center gap-2 py-3 w-full text-left disabled:opacity-50">
             <Download className="w-5 h-5 text-purple-400" />
             <div>
               <p className="font-medium text-sm">Data Download</p>
@@ -82,9 +104,8 @@ export default function PrivacyVisibilityPage({ onBack }) {
           </button>
         </div>
 
-        <p className="text-xs text-gray-400 text-center mt-4">
-          These preferences are saved on this device only — the backend doesn't enforce profile privacy yet.
-        </p>
+        {message && <p className="text-xs text-center mt-4 text-gray-600 bg-white rounded-xl p-3">{message}</p>}
+        <p className="text-xs text-gray-400 text-center mt-4">Profile/activity visibility preferences are currently stored on this device; they do not yet change backend visibility rules.</p>
       </div>
     </div>
   );

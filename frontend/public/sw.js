@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ra-social-cache-v1';
+const CACHE_NAME = 'ra-social-cache-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 // Install: pre-cache the app shell
@@ -27,6 +27,10 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
+  // Only handle same-origin GET requests. Third-party media/CDN requests
+  // should keep the browser's normal caching behavior.
+  if (url.origin !== self.location.origin) return;
+
   // Never cache API requests — always go to network so data stays live.
   if (url.pathname.startsWith('/api')) return;
 
@@ -41,7 +45,7 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => cached);
-      return cached || networkFetch;
+      return cached || networkFetch.catch(() => new Response('Offline', { status: 503, statusText: 'Offline' }));
     })
   );
 });

@@ -10,8 +10,10 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   const [loading, setLoading] = useState(true);
   const query = String(searchQuery || '').trim().toLowerCase();
   const visibleReels = query ? reels.filter(r => [r.content, r.user?.fullName, r.user?.username, ...(r.hashtags || [])].filter(Boolean).join(' ').toLowerCase().includes(query)) : reels;
+  const activeReel = visibleReels[current] || null;
   const [current, setCurrent] = useState(0);
   const [videoErrors, setVideoErrors] = useState({});
+  const [loadError, setLoadError] = useState('');
   const [sharedId, setSharedId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [menuForId, setMenuForId] = useState(null);
@@ -60,12 +62,12 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
         video.currentTime = 0;
       }
     });
-    const active = visibleReels[current];
-    if (active) recordView(active.id);
-  }, [current, reels]);
+    if (activeReel) recordView(activeReel.id);
+  }, [current, visibleReels]);
 
   const loadReels = async () => {
     try {
+      setLoadError('');
       const res = await postAPI.getFeed(1, 50);
       const videos = (res.data.data || []).filter(p => p.mediaUrl && (p.mediaType === 'video' || /\.(mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(p.mediaUrl) || /[?&]resource_type=video/i.test(p.mediaUrl)));
       // Creator Ad videos use the same original Reels experience. Normal image/text posts never enter Reels.
@@ -74,7 +76,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
       const initialViews = {};
       videos.forEach(v => { initialViews[v.id] = v.viewCount || 0; });
       setViews(initialViews);
-    } catch (err) { console.error('Failed to load reels', err); }
+    } catch (err) { console.error('Failed to load reels', err); setLoadError(err.response?.data?.message || 'Could not load reels. Please try again.'); }
     finally { setLoading(false); }
   };
 
@@ -152,12 +154,15 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   };
 
   const handleScroll = () => {
-    if (!containerRef.current) return;
-    const idx = Math.max(0, Math.min(visibleReels.length - 1, Math.round(containerRef.current.scrollTop / containerRef.current.clientHeight)));
-    setCurrent(idx);
+    if (!containerRef.current || !visibleReels.length) return;
+    const idx = Math.max(0, Math.min(visibleReels.length - 1, Math.round(containerRef.current.scrollTop / Math.max(1, containerRef.current.clientHeight))));
+    setCurrent(prev => prev === idx ? prev : idx);
   };
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white">Loading reels...</div>;
+  const retryLoad = () => { setLoading(true); setReels([]); setCurrent(0); setVideoErrors({}); loadReels(); };
+
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white" role="status">Loading reels...</div>;
+  if (loadError && reels.length === 0) return <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-4 px-6 text-center"><p className="text-lg font-bold">Could not load reels</p><p className="text-sm text-gray-400">{loadError}</p><button onClick={retryLoad} className="px-5 py-2 rounded-full bg-white text-black font-semibold">Retry</button></div>;
   if (reels.length === 0) return <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-2 px-6 text-center"><p className="text-lg font-bold">No reels yet</p><p className="text-sm text-gray-400">Post a video from Home or Creator Ads to see it here.</p></div>;
   if (query && visibleReels.length === 0) return <div className="min-h-screen bg-black text-white flex flex-col"><div className="flex items-center gap-2 px-4 pt-4"><SearchIcon className="w-5 h-5" /><input autoFocus value={searchQuery} onChange={e => onSearchChange?.(e.target.value)} placeholder="Search reels" className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2 outline-none" /><button onClick={() => onCloseSearch?.()} aria-label="Close search"><X /></button></div><div className="flex-1 flex items-center justify-center text-gray-400">No reels match your search.</div></div>;
 
@@ -179,7 +184,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
             src={reel.mediaUrl}
             className="h-full w-full object-contain"
             loop muted playsInline preload={i === current ? 'auto' : 'metadata'}
-            controls={i === current}
+            controls={i === current} disablePictureInPicture controlsList="nodownload"
             onPlay={() => recordView(reel.id)}
             onError={() => setVideoErrors(prev => ({ ...prev, [reel.id]: true }))}
           />

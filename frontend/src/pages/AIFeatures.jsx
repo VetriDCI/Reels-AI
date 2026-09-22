@@ -53,6 +53,10 @@ function AIFeatures({ searchQuery = '' }) {
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -73,17 +77,30 @@ function AIFeatures({ searchQuery = '' }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, sending]);
 
-  const loadHistory = async () => {
+  const loadHistory = async (page = 1, append = false) => {
     try {
-      setLoadingHistory(true);
-      const res = await aiAPI.history();
-      setConversations(res.data?.data?.conversations || []);
+      if (append) setHistoryLoadingMore(true); else setLoadingHistory(true);
+      setHistoryError('');
+      const res = await aiAPI.history(page, 20);
+      const data = res.data?.data || {};
+      const items = data.conversations || [];
+      setConversations((prev) => append ? [...prev, ...items.filter((item) => !prev.some((old) => old.id === item.id))] : items);
+      setHistoryPage(page);
+      setHistoryHasMore(Boolean(data.pagination?.hasMore));
     } catch (error) {
       console.error('AI history error:', error);
+      setHistoryError(error.response?.data?.message || 'Could not load AI history.');
     } finally {
       setLoadingHistory(false);
+      setHistoryLoadingMore(false);
     }
   };
+
+  const loadMoreHistory = () => {
+    if (!historyLoadingMore && historyHasMore) loadHistory(historyPage + 1, true);
+  };
+
+  const retryHistory = () => loadHistory(1, false);
 
   const newChat = () => {
     setConversationId(null);
@@ -576,6 +593,8 @@ function AIFeatures({ searchQuery = '' }) {
           <div className="flex-1 overflow-y-auto px-3 pb-4">
             {loadingHistory ? (
               <div className="p-4 text-sm text-gray-400">Loading history...</div>
+            ) : historyError ? (
+              <div className="p-4 text-sm text-red-600"><div>{historyError}</div><button onClick={retryHistory} className="mt-2 rounded-lg border px-3 py-1.5 text-sm">Retry</button></div>
             ) : conversations.length === 0 ? (
               <div className="p-4 text-sm text-gray-400">{searchQuery.trim() ? 'No AI conversations match your search.' : 'Your AI conversations will appear here.'}</div>
             ) : visibleConversations.map((item) => (
@@ -585,6 +604,11 @@ function AIFeatures({ searchQuery = '' }) {
                 <span onClick={(e) => deleteConversation(item.id, e)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500"><Trash2 size={15} /></span>
               </button>
             ))}
+            {!loadingHistory && !historyError && historyHasMore && !searchQuery.trim() && (
+              <button onClick={loadMoreHistory} disabled={historyLoadingMore} className="m-2 w-[calc(100%-1rem)] rounded-lg border px-3 py-2 text-sm disabled:opacity-50">
+                {historyLoadingMore ? 'Loading more...' : 'Load more chats'}
+              </button>
+            )}
           </div>
         </aside>
 
