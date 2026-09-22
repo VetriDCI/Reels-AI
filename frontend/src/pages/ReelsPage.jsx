@@ -4,10 +4,12 @@ import { savedPostAPI, postAPI, followAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
 
-export default function ReelsPage({ onNotifications, unreadNotificationCount, onSearch, initialPostId }) {
+export default function ReelsPage({ onNotifications, unreadNotificationCount, onSearch, searchOpen = false, searchQuery = '', onSearchChange, onCloseSearch, initialPostId }) {
   const { user: currentUser } = useAuth();
   const [reels, setReels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const query = String(searchQuery || '').trim().toLowerCase();
+  const visibleReels = query ? reels.filter(r => [r.content, r.user?.fullName, r.user?.username, ...(r.hashtags || [])].filter(Boolean).join(' ').toLowerCase().includes(query)) : reels;
   const [current, setCurrent] = useState(0);
   const [videoErrors, setVideoErrors] = useState({});
   const [sharedId, setSharedId] = useState(null);
@@ -58,7 +60,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
         video.currentTime = 0;
       }
     });
-    const active = reels[current];
+    const active = visibleReels[current];
     if (active) recordView(active.id);
   }, [current, reels]);
 
@@ -151,16 +153,26 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
 
   const handleScroll = () => {
     if (!containerRef.current) return;
-    const idx = Math.max(0, Math.min(reels.length - 1, Math.round(containerRef.current.scrollTop / containerRef.current.clientHeight)));
+    const idx = Math.max(0, Math.min(visibleReels.length - 1, Math.round(containerRef.current.scrollTop / containerRef.current.clientHeight)));
     setCurrent(idx);
   };
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white">Loading reels...</div>;
   if (reels.length === 0) return <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-2 px-6 text-center"><p className="text-lg font-bold">No reels yet</p><p className="text-sm text-gray-400">Post a video from Home or Creator Ads to see it here.</p></div>;
+  if (query && visibleReels.length === 0) return <div className="min-h-screen bg-black text-white flex flex-col"><div className="flex items-center gap-2 px-4 pt-4"><SearchIcon className="w-5 h-5" /><input autoFocus value={searchQuery} onChange={e => onSearchChange?.(e.target.value)} placeholder="Search reels" className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2 outline-none" /><button onClick={() => onCloseSearch?.()} aria-label="Close search"><X /></button></div><div className="flex-1 flex items-center justify-center text-gray-400">No reels match your search.</div></div>;
 
   return (
     <div ref={containerRef} onScroll={handleScroll} className="h-[calc(100dvh-76px)] w-full bg-black overflow-y-scroll snap-y snap-mandatory overscroll-contain">
-      {reels.map((reel, i) => (
+      <div className="absolute top-0 left-0 right-0 z-[70] px-4 pt-4 pointer-events-none">
+        {searchOpen ? (
+          <div className="pointer-events-auto flex items-center gap-2 max-w-xl mx-auto rounded-full bg-black/70 border border-white/20 backdrop-blur px-3 py-2">
+            <SearchIcon className="w-5 h-5 text-white/80 shrink-0" />
+            <input autoFocus value={searchQuery} onChange={e => onSearchChange?.(e.target.value)} placeholder="Search reels" aria-label="Search reels" className="flex-1 bg-transparent text-white placeholder:text-white/60 outline-none" />
+            <button onClick={() => onCloseSearch?.()} aria-label="Close search" className="text-white/80"><X className="w-5 h-5" /></button>
+          </div>
+        ) : null}
+      </div>
+      {visibleReels.map((reel, i) => (
         <div key={reel.id} ref={el => { itemRefs.current[reel.id] = el; }} className="relative h-[calc(100dvh-76px)] w-full snap-start flex items-center justify-center bg-black">
           <video
             ref={el => { videoRefs.current[reel.id] = el; }}
@@ -175,7 +187,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
 
           <div className="absolute top-0 left-0 right-0 flex items-center gap-3 px-4 pt-4 text-white bg-gradient-to-b from-black/70 to-transparent pb-8 pointer-events-none">
             <span className="font-bold text-lg shrink-0">RA Social</span>
-            <button onClick={() => onSearch('')} aria-label="Search" className="pointer-events-auto flex-1 max-w-md mx-auto flex items-center gap-2 rounded-full bg-white/15 border border-white/25 backdrop-blur px-3 py-2 text-left text-sm text-white/90">
+            <button onClick={() => onSearch('')} aria-label="Search" className={`pointer-events-auto flex-1 max-w-md mx-auto flex items-center gap-2 rounded-full bg-white/15 border border-white/25 backdrop-blur px-3 py-2 text-left text-sm text-white/90 ${searchOpen ? 'opacity-0 pointer-events-none' : ''}`}>
               <SearchIcon className="w-5 h-5 shrink-0" />
               <span className="truncate">Search people, posts or hashtags</span>
             </button>

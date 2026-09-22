@@ -90,15 +90,11 @@ function AppContent() {
 
   const openSearch = (query = '') => {
     const value = typeof query === 'string' ? query : '';
-    // Search is page-scoped: Home searches Home feed, Chat searches chats,
-    // and AI searches AI conversations. It no longer opens one global result
-    // page for every section. Reels keeps its dedicated search page.
-    if (activeTab === 'reels') {
-      setSearchSource('reels');
-      setSearchQuery(value.trim());
-      navigateTab('search');
-      return;
-    }
+    // Search always stays inside the currently visible page. Never navigate
+    // to a separate/global search screen. Each page consumes contextSearchQuery
+    // and filters only its own content.
+    setSearchSource(activeTab);
+    setSearchQuery(value.trim());
     setContextSearchQuery(value);
     setContextSearchOpen(true);
   };
@@ -183,7 +179,8 @@ function AppContent() {
   }
 
   const isFullScreenTab = activeTab === 'reels' || activeTab === 'me';
-  const hideTopBar = isFullScreenTab || activeTab === 'search';
+  // Search is an inline control; it must never become its own page.
+  const hideTopBar = isFullScreenTab;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -203,7 +200,7 @@ function AppContent() {
 
       <main className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} searchQuery={contextSearchQuery} />}
-        {activeTab === 'reels' && <ReelsPage onNotifications={() => navigateTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} initialPostId={reelTarget?.id} />}
+        {activeTab === 'reels' && <ReelsPage onNotifications={() => navigateTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} searchOpen={contextSearchOpen} searchQuery={contextSearchQuery} onSearchChange={setContextSearchQuery} onCloseSearch={closeContextSearch} initialPostId={reelTarget?.id} />}
         {activeTab === 'ai' && <AIFeatures searchQuery={contextSearchQuery} />}
         {activeTab === 'chat' && <ChatPage searchQuery={contextSearchQuery} />}
         {activeTab === 'me' && <MePage onLogout={logout} onOpenReportHistory={() => navigateTab('report-history')} onBack={() => navigateTab('home')} onOpenDrafts={() => navigateTab('drafts')} />}
