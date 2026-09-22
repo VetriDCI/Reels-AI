@@ -61,6 +61,7 @@ model User {
   vibeReactions   VibeReaction[]
   vibeReplies     VibeReply[]
   vibeViews       VibeView[]
+  mailAiMails    MailAIMessage[] @relation("MailAiUser")
 
   @@index([username])
   @@index([email])
@@ -505,4 +506,42 @@ model AdEvent {
 
   @@index([campaignId, eventType])
   @@index([createdAt])
+}
+
+
+model MailAIMessage {
+  id              String          @id @default(uuid())
+  userId          String
+  user            User            @relation("MailAiUser", fields: [userId], references: [id], onDelete: Cascade)
+  senderEmail     String
+  receiverEmail   String
+  subject         String
+  body            String
+  status          String          @default("pending")
+  autoReply       Boolean         @default(false)
+  replyBody       String?
+  category        String          @default("general")
+  sentiment       String          @default("neutral")
+  urgency         String          @default("low")
+  spamScore       Float           @default(0)
+  phishingRisk    String          @default("low")
+  summary         String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  replies         MailAIReply[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([senderEmail])
+}
+
+model MailAIReply {
+  id          String        @id @default(uuid())
+  messageId   String
+  message     MailAIMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  body        String
+  status      String        @default("generated")
+  createdAt   DateTime      @default(now())
+
+  @@index([messageId, createdAt])
 }
