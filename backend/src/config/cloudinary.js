@@ -15,18 +15,30 @@ const storage = new CloudinaryStorage({
     const isVideo = file.mimetype?.startsWith('video/');
     return {
       folder: 'ra-social',
-      resource_type: 'auto', // critical: without this, videos get stored as 'image' resource and won't play
-      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'webm'],
+      resource_type: isVideo ? 'video' : 'image',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'm4v', 'webm'],
       // Only apply image resize transformation to images — video transformations need different handling.
       transformation: isVideo ? undefined : [{ width: 1920, height: 1080, crop: 'limit' }],
     };
   },
 });
 
+const allowedImage = new Set(['image/jpeg','image/png','image/gif','image/webp']);
+const allowedVideo = new Set(['video/mp4','video/webm','video/quicktime','video/x-m4v']);
+const fileFilter = (req, file, cb) => {
+  const mime = String(file.mimetype || '').toLowerCase();
+  if (allowedImage.has(mime) || allowedVideo.has(mime)) return cb(null, true);
+  const err = new Error('Unsupported media type. Use JPG, PNG, GIF, WEBP, MP4, WEBM, or MOV.');
+  err.code = 'INVALID_MEDIA_TYPE';
+  cb(err);
+};
+
 const upload = multer({ 
   storage,
+  fileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024
+    fileSize: 50 * 1024 * 1024,
+    files: 1
   }
 });
 

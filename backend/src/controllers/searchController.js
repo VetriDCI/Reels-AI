@@ -7,6 +7,10 @@ const safeString = (value) => String(value ?? '').trim();
 export const search = async (req, res) => {
   const rawQuery = safeString(req.query.query);
   const type = safeString(req.query.type || 'all').toLowerCase();
+  const page = Math.max(1, Number.parseInt(req.query.page || '1', 10) || 1);
+  const requestedLimit = Number.parseInt(req.query.limit || '20', 10) || 20;
+  const limit = Math.min(Math.max(requestedLimit, 1), 50);
+  const skip = (page - 1) * limit;
 
   if (!rawQuery) {
     return res.status(400).json({ success: false, message: 'Search query is required' });
@@ -40,7 +44,8 @@ export const search = async (req, res) => {
           },
           select: { id: true, username: true, fullName: true, avatarUrl: true, bio: true },
           orderBy: { username: 'asc' },
-          take: 20
+          skip,
+          take: limit
         }).then(users => { data.users = users; })
       );
     }
@@ -64,7 +69,8 @@ export const search = async (req, res) => {
             hashtags: { include: { hashtag: { select: { name: true } } } }
           },
           orderBy: { createdAt: 'desc' },
-          take: 30
+          skip,
+          take: limit
         }).then(posts => {
           data.posts = posts.map(post => ({
             ...post,
@@ -82,7 +88,8 @@ export const search = async (req, res) => {
           where: { name: { contains: query, mode: 'insensitive' } },
           include: { posts: { select: { postId: true } } },
           orderBy: { name: 'asc' },
-          take: 20
+          skip,
+          take: limit
         }).then(hashtags => {
           data.hashtags = hashtags.map(tag => ({
             id: tag.id,
@@ -99,7 +106,9 @@ export const search = async (req, res) => {
       failed.forEach(item => console.error('Search category failed:', item.reason));
     }
 
-    return res.json({ success: true, data, query: rawQuery, type });
+    const counts = { users: data.users.length, posts: data.posts.length, hashtags: data.hashtags.length };
+    const hasMore = Object.values(counts).some(count => count === limit);
+    return res.json({ success: true, data, query: rawQuery, type, pagination: { page, limit, hasMore, counts } });
   } catch (error) {
     console.error('Search error:', error);
     return res.status(500).json({ success: false, message: 'Search failed' });

@@ -3,22 +3,27 @@ import prisma from '../config/database.js';
 export const getNotifications = async (req, res) => {
   try {
     const userId = req.userId;
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
 
-    const notifications = await prisma.notification.findMany({
+    const where = { receiverId: userId };
+    const [notifications, total, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
       where: { receiverId: userId },
       include: {
         sender: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
         post: { select: { id: true, content: true, mediaUrl: true } }
       },
       orderBy: { createdAt: 'desc' },
-      take: 50
-    });
+      skip,
+      take: limit
+      }),
+      prisma.notification.count({ where }),
+      prisma.notification.count({ where: { receiverId: userId, isRead: false } })
+    ]);
 
-    const unreadCount = await prisma.notification.count({
-      where: { receiverId: userId, isRead: false }
-    });
-
-    res.json({ success: true, data: { notifications, unreadCount } });
+    res.json({ success: true, data: { notifications, unreadCount, pagination: { page, limit, total, hasMore: skip + notifications.length < total } } });
   } catch (error) {
     console.error('Get notifications error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch notifications' });

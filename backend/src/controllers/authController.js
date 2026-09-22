@@ -6,6 +6,10 @@ import { createSessionForUser } from './sessionController.js';
 import { sendPasswordResetCode } from '../services/messageService.js';
 
 
+const normalizeUsername = (value) => String(value ?? '').trim().replace(/^@+/, '').toLowerCase();
+const normalizeEmail = (value) => String(value ?? '').trim().toLowerCase();
+const isStrongPassword = (value) => typeof value === 'string' && value.length >= 8 && /[A-Za-z]/.test(value) && /\d/.test(value);
+
 const base32Encode = (bytes) => {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   let bits = 0, value = 0, out = '';
@@ -41,7 +45,7 @@ const consumeBackupCode = async (user, code) => {
 
 export const checkUsername = async (req, res) => {
   try {
-    const username = String(req.query.username || '').trim();
+    const username = normalizeUsername(req.query.username);
 
     if (!username) {
       return res.json({ success: true, data: { available: false, reason: 'empty' } });
@@ -68,11 +72,21 @@ export const checkUsername = async (req, res) => {
 
 export const register = async (req, res) => {
   try {
-    const { username, email, password, fullName, phoneNumber } = req.body;
+    const username = normalizeUsername(req.body?.username);
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password ?? '');
+    const fullName = String(req.body?.fullName ?? '').trim();
+    const phoneNumber = req.body?.phoneNumber;
     const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
 
     if (!username || !email || !password) {
       return res.status(400).json({ success: false, message: 'Username, email and password are required' });
+    }
+    if (!/^[a-z0-9._]{3,30}$/.test(username)) {
+      return res.status(400).json({ success: false, message: 'Username must be 3-30 characters using letters, numbers, dots or underscores' });
+    }
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters and include a letter and a number' });
     }
 
     const existingUser = await prisma.user.findFirst({
@@ -110,7 +124,8 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { identifier, email, password } = req.body;
-    const loginIdentifier = String(identifier ?? email ?? '').trim();
+    const rawIdentifier = String(identifier ?? email ?? '').trim();
+    const loginIdentifier = rawIdentifier.includes('@') ? normalizeEmail(rawIdentifier) : normalizeUsername(rawIdentifier);
 
     if (!loginIdentifier || !password) {
       return res.status(400).json({ success: false, message: 'Email, username or phone number and password are required' });
@@ -207,11 +222,23 @@ export const getMe = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { fullName, bio, avatarUrl, phoneNumber } = req.body;
+    const { fullName, bio, avatarUrl, phoneNumber } = req.body || {};
     const userId = req.userId;
 
-    const data = { fullName, bio };
-    if (avatarUrl) data.avatarUrl = avatarUrl;
+    const normalizedFullName = String(fullName ?? '').trim();
+    const normalizedBio = String(bio ?? '').trim();
+    if (normalizedFullName.length > 80) {
+      return res.status(400).json({ success: false, message: 'Display name must be 80 characters or less' });
+    }
+    if (normalizedBio.length > 300) {
+      return res.status(400).json({ success: false, message: 'Bio must be 300 characters or less' });
+    }
+    if (avatarUrl !== undefined && avatarUrl !== null && String(avatarUrl).length > 2048) {
+      return res.status(400).json({ success: false, message: 'Profile image URL is too long' });
+    }
+
+    const data = { fullName: normalizedFullName || null, bio: normalizedBio };
+    if (avatarUrl !== undefined) data.avatarUrl = avatarUrl ? String(avatarUrl).trim() : null;
     if (phoneNumber !== undefined) {
       const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
       if (normalizedPhone) {
@@ -299,8 +326,8 @@ export const resetPassword = async (req, res) => {
     if (!resetToken || !newPassword) {
       return res.status(400).json({ success: false, message: 'Reset token and new password are required' });
     }
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters and include a letter and a number' });
     }
 
     let decoded;
@@ -341,8 +368,8 @@ export const changePassword = async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ success: false, message: 'Current and new password are required' });
     }
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 8 characters and include a letter and a number' });
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });

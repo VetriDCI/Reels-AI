@@ -12,10 +12,13 @@ import {
   reportPost
 } from '../controllers/postController.js';
 import { protect } from '../middleware/authMiddleware.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { upload, cloudinary } from '../config/cloudinary.js';
 import axios from 'axios';
 
 const router = express.Router();
+const uploadLimit = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, key: (req) => `${req.ip}:${req.userId || 'anonymous'}` });
+const reportLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, key: (req) => `${req.ip}:${req.userId || 'anonymous'}` });
 
 router.get('/:id/download', async (req, res) => {
   try {
@@ -32,7 +35,16 @@ router.get('/:id/download', async (req, res) => {
     res.status(502).json({ success: false, message: 'Unable to download media' });
   }
 });
-router.post('/upload', protect, upload.single('file'), (req, res) => {
+router.post('/upload', protect, uploadLimit, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, message: 'Media must be 50 MB or smaller.' });
+      if (err.code === 'INVALID_MEDIA_TYPE' || err.code === 'LIMIT_UNEXPECTED_FILE') return res.status(415).json({ success: false, message: err.message || 'Unsupported media type.' });
+      return res.status(400).json({ success: false, message: 'Media upload failed.' });
+    }
+    next();
+  });
+}, (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
   const isVideo = String(req.file.mimetype || '').toLowerCase().startsWith('video/');
@@ -63,7 +75,7 @@ router.get('/:id', getPostById);
 router.delete('/:id', protect, deletePost);
 router.patch('/:id', protect, updatePost);
 router.patch('/:id/hide', protect, hidePost);
-router.post('/:id/report', protect, reportPost);
+router.post('/:id/report', protect, reportLimit, reportPost);
 router.post('/:id/view', protect, viewPost);
 router.post('/:id/like', protect, likePost);
 router.post('/:id/comments', protect, addComment);

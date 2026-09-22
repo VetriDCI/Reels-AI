@@ -28,10 +28,14 @@ export const getChatMessages = async (req, res) => {
     await prisma.message.updateMany({ where: { chatId, senderId: { not: userId }, isRead: false }, data: { isRead: true } });
     const hidden = await prisma.messageHidden.findMany({ where: { userId }, select: { messageId: true } });
     const hiddenIds = hidden.map(h => h.messageId);
-    const messages = await prisma.message.findMany({ where: { chatId, id: { notIn: hiddenIds } }, include: { sender: { select: { id: true, username: true, avatarUrl: true } }, replyTo: { include: { sender: { select: { id: true, username: true, avatarUrl: true } } } } }, orderBy: { createdAt: 'asc' } });
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({ where: { chatId, id: { notIn: hiddenIds } }, include: { sender: { select: { id: true, username: true, avatarUrl: true } }, replyTo: { include: { sender: { select: { id: true, username: true, avatarUrl: true } } } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.message.count({ where: { chatId, id: { notIn: hiddenIds } } })
+    ]);
+    messages.reverse();
     const readIds = messages.filter(m => m.senderId !== userId && m.isRead).map(m => m.id);
     if (readIds.length) req.app.get('io')?.to(`chat:${chatId}`).emit('message_read', { chatId, messageIds: readIds });
-    res.json({ success: true, data: messages });
+    res.json({ success: true, data: messages, pagination: { page, limit, total, hasMore: page * limit < total } });
   } catch (error) { console.error('Get messages error:', error); res.status(500).json({ success: false, message: 'Failed to fetch messages' }); }
 };
 
@@ -65,13 +69,16 @@ export const createChat = async (req, res) => {
 export const sendMessage = async (req, res) => {
   try {
     const { chatId } = req.params, { content, mediaUrl, replyToId, forwardedFromId } = req.body, userId = req.userId;
-    if (!content?.trim() && !mediaUrl) return res.status(400).json({ success: false, message: 'Message content is required' });
+    const trimmedContent = typeof content === 'string' ? content.trim() : '';
+    if (!trimmedContent && !mediaUrl) return res.status(400).json({ success: false, message: 'Message content is required' });
+    if (trimmedContent.length > 5000) return res.status(400).json({ success: false, message: 'Message cannot exceed 5000 characters' });
+    if (mediaUrl && (typeof mediaUrl !== 'string' || mediaUrl.length > 2048)) return res.status(400).json({ success: false, message: 'Invalid attachment URL' });
     const chat = await prisma.chat.findFirst({ where: { id: chatId, participants: { some: { id: userId } } }, include: { participants: { select: { id: true } } } });
     if (!chat) return res.status(404).json({ success: false, message: 'Chat not found' });
     const otherParticipant = chat.participants.find(p => p.id !== userId);
     if (otherParticipant) { const safety = await getSafetyPair(userId, otherParticipant.id); if (safety.blockedByMe || safety.blockedMe) return res.status(403).json({ success: false, message: 'Messaging is unavailable for this user' }); }
     if (replyToId) { const reply = await prisma.message.findFirst({ where: { id: replyToId, chatId } }); if (!reply) return res.status(400).json({ success: false, message: 'Reply target not found' }); }
-    const message = await prisma.message.create({ data: { chatId, senderId: userId, content: content?.trim() || '', mediaUrl: mediaUrl || null, replyToId: replyToId || null, forwardedFromId: forwardedFromId || null }, include: { sender: { select: { id: true, username: true, avatarUrl: true } }, replyTo: { include: { sender: { select: { id: true, username: true, avatarUrl: true } } } } } });
+    const message = await prisma.message.create({ data: { chatId, senderId: userId, content: trimmedContent, mediaUrl: mediaUrl || null, replyToId: replyToId || null, forwardedFromId: forwardedFromId || null }, include: { sender: { select: { id: true, username: true, avatarUrl: true } }, replyTo: { include: { sender: { select: { id: true, username: true, avatarUrl: true } } } } } });
     await prisma.chat.update({ where: { id: chatId }, data: { updatedAt: new Date() } });
     req.app.get('io')?.to(`chat:${chatId}`).emit('new_message', message);
     res.status(201).json({ success: true, data: message });

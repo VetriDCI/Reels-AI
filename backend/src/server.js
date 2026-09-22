@@ -27,11 +27,25 @@ import { cleanupOldWatchHistory } from './controllers/watchHistoryController.js'
 import prisma from './config/database.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 dotenv.config();
 
 const app = express();
 app.set('trust proxy', 1);
+
+// Baseline security headers without adding another runtime dependency.
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+  res.setHeader('X-XSS-Protection', '0');
+  req.requestId = crypto.randomUUID();
+  res.setHeader('X-Request-Id', req.requestId);
+  next();
+});
 const httpServer = createServer(app);
 const onlineUsers = new Map();
 const io = new Server(httpServer, {
@@ -57,6 +71,10 @@ app.use(cors({
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  console.warn('⚠️ JWT_SECRET is missing or shorter than 32 characters. Configure a strong secret in production.');
+}
+
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/ai', aiRoutes);
@@ -79,6 +97,7 @@ app.use('/api/watch-history', watchHistoryRoutes);
 app.set('io', io);
 
 app.get('/api/health', (req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.json({
     success: true,
     message: 'RA Social API is running',
@@ -134,19 +153,59 @@ io.on('connection', (socket) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ success: false, message: 'Something went wrong!' });
+  const status = Number(err?.status || err?.statusCode) || 500;
+  console.error('Request error', { requestId: req.requestId, method: req.method, path: req.path, status, message: err?.message });
+  if (res.headersSent) return next(err);
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ success: false, message: 'File is too large. Maximum size is 50 MB.', requestId: req.requestId });
+  }
+  if (err?.name === 'MulterError') {
+    return res.status(400).json({ success: false, message: 'Invalid upload request.', requestId: req.requestId });
+  }
+  if (err?.message === 'Not allowed by CORS') {
+    return res.status(403).json({ success: false, message: 'Origin is not allowed.', requestId: req.requestId });
+  }
+  const safeMessage = status >= 500 ? 'Something went wrong. Please try again.' : (err?.message || 'Request failed.');
+  res.status(status).json({ success: false, message: safeMessage, requestId: req.requestId });
 });
 
 const PORT = process.env.PORT || 5000;
 
+// Avoid leaving timers and database connections behind during platform restarts.
+let shuttingDown = false;
+const shutdown = async (signal) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}; shutting down gracefully...`);
+  clearInterval(vibeCleanupInterval);
+  clearInterval(historyCleanupInterval);
+  httpServer.close(async () => {
+    try { await prisma.$disconnect(); } catch (error) { console.error('Prisma disconnect error:', error); }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+};
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => console.error('Unhandled promise rejection:', reason));
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+  shutdown('uncaughtException').catch(() => process.exit(1));
+});
+
 // Keep expired 24-hour Vibes cleaned up even when nobody opens the Chat page.
-setInterval(() => cleanupExpiredVibes().catch((error) => console.error('Vibe cleanup error:', error)), 10 * 60 * 1000);
+const vibeCleanupInterval = setInterval(() => cleanupExpiredVibes().catch((error) => console.error('Vibe cleanup error:', error)), 10 * 60 * 1000);
 cleanupExpiredVibes().catch((error) => console.error('Initial Vibe cleanup error:', error));
 cleanupOldWatchHistory().catch((error) => console.error('Initial watch-history cleanup error:', error));
-setInterval(() => cleanupOldWatchHistory().catch((error) => console.error('Watch-history cleanup error:', error)), 60 * 60 * 1000);
+const historyCleanupInterval = setInterval(() => cleanupOldWatchHistory().catch((error) => console.error('Watch-history cleanup error:', error)), 60 * 60 * 1000);
 
 app.get('/', (req, res) => res.json({ success: true, message: 'RA Social API is running' }));
+
+// Keep unknown API routes from falling through to an HTML/error response.
+app.use('/api', (req, res) => {
+  res.status(404).json({ success: false, message: 'API endpoint not found', requestId: req.requestId });
+});
 
 // Auto-create the default admin account on startup if it doesn't exist yet.
 // This runs safely on every boot (idempotent — checks first) so it works

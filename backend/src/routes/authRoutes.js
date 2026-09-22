@@ -5,13 +5,14 @@ import { protect } from '../middleware/authMiddleware.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 
 const credentialLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 12 });
+const twoFactorLimit = rateLimit({ windowMs: 10 * 60 * 1000, max: 8 });
 
 const router = express.Router();
 
 router.get('/check-username', checkUsername);
 router.post('/register', credentialLimit, register);
 router.post('/login', credentialLimit, login);
-router.post('/2fa/verify-login', verifyTwoFactorLogin);
+router.post('/2fa/verify-login', twoFactorLimit, verifyTwoFactorLogin);
 router.get('/2fa/status', protect, getTwoFactorStatus);
 router.post('/2fa/setup', protect, setupTwoFactor);
 router.post('/2fa/enable', protect, enableTwoFactor);

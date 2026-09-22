@@ -1,14 +1,23 @@
 import prisma from '../config/database.js';
 
 const MIN_PAYOUT = 10;
+const MAX_PAYOUT_HISTORY = 100;
 const METHODS = new Set(['bank', 'upi', 'paypal']);
 
 export const getPayouts = async (req, res) => {
   try {
-    const payouts = await prisma.payout.findMany({
-      where: { userId: req.userId }, orderBy: { createdAt: 'desc' }, take: 50,
-    });
-    res.json({ success: true, data: payouts });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_PAYOUT_HISTORY, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const [payouts, total] = await Promise.all([
+      prisma.payout.findMany({
+        where: { userId: req.userId },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.payout.count({ where: { userId: req.userId } }),
+    ]);
+    res.json({ success: true, data: payouts, pagination: { page, limit, total, hasMore: page * limit < total } });
   } catch (error) {
     console.error('Get payouts error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch payout history' });

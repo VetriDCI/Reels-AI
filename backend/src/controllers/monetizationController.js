@@ -154,6 +154,14 @@ export const getMonetizationAnalytics = async (req, res) => {
     const paidOut = payouts.filter((p) => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
     const available = Math.max(0, user.earnings - pending);
 
+    const totalViews = posts.reduce((sum, p) => sum + Number(p.viewCount || 0), 0);
+    const totalLikes = posts.reduce((sum, p) => sum + p.likes.length, 0);
+    const totalComments = posts.reduce((sum, p) => sum + p.comments.length, 0);
+    const videoPosts = posts.filter((p) => p.mediaType === 'video').length;
+    const imagePosts = posts.filter((p) => p.mediaType !== 'video').length;
+    const engagement = totalLikes + totalComments;
+    const engagementRate = totalViews > 0 ? roundMoney((engagement / totalViews) * 100) : 0;
+
     const topPosts = posts
       .map((p) => ({ id: p.id, content: p.content || 'Untitled post', mediaType: p.mediaType || 'text', views: p.viewCount || 0, likes: p.likes.length, comments: p.comments.length, engagement: (p.likes.length + p.comments.length), createdAt: p.createdAt }))
       .sort((a, b) => (b.views + b.engagement * 10) - (a.views + a.engagement * 10))
@@ -172,6 +180,15 @@ export const getMonetizationAnalytics = async (req, res) => {
       sourceBreakdown: [...sourceMap.entries()].map(([source, amount]) => ({ source, amount: roundMoney(amount) })).sort((a, b) => b.amount - a.amount),
       monthly,
       recentEarnings: periodLedger.slice(-20).reverse().map((e) => ({ ...e, amount: roundMoney(e.amount) })),
+      totalViews,
+      totalLikes,
+      totalComments,
+      engagement,
+      engagementRate,
+      videoPosts,
+      imagePosts,
+      contentCount: posts.length,
+      averageViewsPerPost: posts.length ? roundMoney(totalViews / posts.length) : 0,
       topPosts,
     }});
   } catch (error) {

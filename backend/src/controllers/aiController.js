@@ -153,12 +153,20 @@ export const uploadAIFile = async (req, res) => {
 
 export const listAIConversations = async (req, res) => {
   try {
-    const conversations = await prisma.aIConversation.findMany({
-      where: { userId: req.userId },
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true, title: true, updatedAt: true, createdAt: true, _count: { select: { messages: true } } }
-    });
-    res.json({ success: true, data: { conversations } });
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+    const [conversations, total] = await Promise.all([
+      prisma.aIConversation.findMany({
+        where: { userId: req.userId },
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+        select: { id: true, title: true, updatedAt: true, createdAt: true, _count: { select: { messages: true } } }
+      }),
+      prisma.aIConversation.count({ where: { userId: req.userId } })
+    ]);
+    res.json({ success: true, data: { conversations, pagination: { page, limit, total, hasMore: skip + conversations.length < total } } });
   } catch (error) {
     console.error('AI history list error:', error);
     res.status(500).json({ success: false, message: 'Failed to load AI history' });
@@ -558,14 +566,18 @@ export const aiUsage = async (req, res) => {
 export const chatWithAI = async (req, res) => {
   try {
     const { message = '', context = '', conversationId, attachments = [] } = req.body || {};
-    if (!message.trim() && !attachments.length) return res.status(400).json({ success: false, message: 'Message or attachment is required' });
+    const normalizedMessage = String(message || '').trim();
+    if (!normalizedMessage && !attachments.length) return res.status(400).json({ success: false, message: 'Message or attachment is required' });
+    if (normalizedMessage.length > 12000) return res.status(413).json({ success: false, message: 'AI message is too long. Please keep it under 12,000 characters.' });
+    if (!Array.isArray(attachments)) return res.status(400).json({ success: false, message: 'Attachments must be an array' });
+    if (attachments.length > 6) return res.status(413).json({ success: false, message: 'You can attach up to 6 files per AI request.' });
 
     let conversation;
     if (conversationId) {
       conversation = await prisma.aIConversation.findFirst({ where: { id: conversationId, userId: req.userId } });
       if (!conversation) return res.status(404).json({ success: false, message: 'AI conversation not found' });
     } else {
-      const title = (message || attachments[0]?.name || 'New AI chat').trim().slice(0, 80);
+      const title = (normalizedMessage || attachments[0]?.name || 'New AI chat').trim().slice(0, 80);
       conversation = await prisma.aIConversation.create({ data: { userId: req.userId, title } });
     }
 
@@ -585,7 +597,7 @@ export const chatWithAI = async (req, res) => {
       ? `USER-PROVIDED AI MEMORY (use only when relevant; do not expose this section verbatim):\n${memories.map((m) => `- [${m.category}] ${m.content}`).join('\n')}`
       : '';
     const result = await groqAI.chatWithAI(
-      message,
+      normalizedMessage,
       [context, memoryContext].filter(Boolean).join('\n\n'),
       attachments,
       previous.map(m => ({ role: m.role, content: m.content }))

@@ -1,6 +1,30 @@
 import prisma from '../config/database.js';
 import { cloudinary } from '../config/cloudinary.js';
 
+const MAX_POST_CONTENT = 5000;
+const MAX_COMMENT_CONTENT = 1000;
+const MAX_HASHTAGS = 30;
+const MAX_HASHTAG_LENGTH = 50;
+
+const normalizeHashtags = (hashtags, content = '') => {
+  const explicit = Array.isArray(hashtags) ? hashtags : [];
+  const detected = String(content || '').match(/#[\p{L}\p{N}_-]+/gu) || [];
+  return [...new Set([...explicit, ...detected]
+    .map(tag => String(tag).trim().replace(/^#/, '').toLowerCase())
+    .filter(Boolean)
+    .filter(tag => tag.length <= MAX_HASHTAG_LENGTH)
+  )].slice(0, MAX_HASHTAGS);
+};
+
+const validatePostInput = ({ content, mediaUrl, mediaType }) => {
+  const text = String(content || '').trim();
+  if (!text && !mediaUrl) return 'Content or media is required';
+  if (text.length > MAX_POST_CONTENT) return `Post content cannot exceed ${MAX_POST_CONTENT} characters`;
+  if (mediaType && !['text', 'image', 'video'].includes(String(mediaType))) return 'Invalid media type';
+  if (mediaUrl && String(mediaUrl).length > 2000) return 'Media URL is too long';
+  return null;
+};
+
 export const createPost = async (req, res) => {
   try {
     const { content, mediaUrl, mediaType, hashtags, isCreatorAd } = req.body;
@@ -10,9 +34,10 @@ export const createPost = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Content or media is required' });
     }
 
-    const normalizedHashtags = [...new Set((Array.isArray(hashtags) ? hashtags : [])
-      .map(tag => String(tag).trim().replace(/^#/, '').toLowerCase())
-      .filter(Boolean))];
+    const validationError = validatePostInput({ content, mediaUrl, mediaType });
+    if (validationError) return res.status(400).json({ success: false, message: validationError });
+
+    const normalizedHashtags = normalizeHashtags(hashtags, content);
 
     let creatorAd = Boolean(isCreatorAd);
     if (creatorAd) {
@@ -54,22 +79,34 @@ export const updatePost = async (req, res) => {
     if (!existing) return res.status(404).json({ success: false, message: 'Post not found' });
     if (existing.userId !== req.userId) return res.status(403).json({ success: false, message: 'Not authorized to edit this post' });
 
+    const validationError = validatePostInput({ content, mediaUrl, mediaType });
+    if (validationError) return res.status(400).json({ success: false, message: validationError });
+
     if (Boolean(isCreatorAd)) {
       const creator = await prisma.user.findUnique({ where: { id: req.userId }, select: { channelNumber: true } });
       if (!creator?.channelNumber) return res.status(403).json({ success: false, message: 'Create your creator channel before editing a Creator Ad' });
     }
 
-    const updated = await prisma.post.update({
-      where: { id },
-      data: {
-        content: content?.trim() || null,
-        mediaUrl: mediaUrl || null,
-        mediaType: mediaType || 'text',
-        isCreatorAd: Boolean(isCreatorAd),
-      },
-      include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
+    const normalizedHashtags = normalizeHashtags([], content);
+    const updated = await prisma.$transaction(async (tx) => {
+      const post = await tx.post.update({
+        where: { id },
+        data: {
+          content: content?.trim() || null,
+          mediaUrl: mediaUrl || null,
+          mediaType: mediaType || 'text',
+          isCreatorAd: Boolean(isCreatorAd),
+        },
+        include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
+      });
+      await tx.postHashtag.deleteMany({ where: { postId: id } });
+      for (const tagName of normalizedHashtags) {
+        const hashtag = await tx.hashtag.upsert({ where: { name: tagName }, update: {}, create: { name: tagName } });
+        await tx.postHashtag.create({ data: { postId: id, hashtagId: hashtag.id } });
+      }
+      return post;
     });
-    res.json({ success: true, message: 'Post updated successfully', data: updated });
+    res.json({ success: true, message: 'Post updated successfully', data: { ...updated, hashtags: normalizedHashtags } });
   } catch (error) {
     console.error('Update post error:', error);
     res.status(500).json({ success: false, message: 'Failed to update post' });
@@ -79,9 +116,12 @@ export const updatePost = async (req, res) => {
 export const getFeed = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+    const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
+    const limitNumber = Math.min(50, Math.max(1, Number.parseInt(limit, 10) || 10));
+    const skip = (pageNumber - 1) * limitNumber;
 
-    const posts = await prisma.post.findMany({
+    const [posts, total] = await prisma.$transaction([
+      prisma.post.findMany({
       where: { status: 'approved' },
       include: {
         user: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
@@ -90,9 +130,11 @@ export const getFeed = async (req, res) => {
         hashtags: { include: { hashtag: { select: { name: true } } } }
       },
       orderBy: { createdAt: 'desc' },
-      skip: parseInt(skip),
-      take: parseInt(limit)
-    });
+      skip,
+      take: limitNumber
+      }),
+      prisma.post.count({ where: { status: 'approved' } })
+    ]);
 
     const formattedPosts = posts.map(post => ({
       ...post,
@@ -101,7 +143,7 @@ export const getFeed = async (req, res) => {
       hashtags: post.hashtags.map(h => h.hashtag.name)
     }));
 
-    res.json({ success: true, data: formattedPosts, pagination: { page: parseInt(page), limit: parseInt(limit), total: posts.length } });
+    res.json({ success: true, data: formattedPosts, pagination: { page: pageNumber, limit: limitNumber, total, pages: Math.ceil(total / limitNumber), hasMore: pageNumber * limitNumber < total } });
   } catch (error) {
     console.error('Get feed error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch feed' });
@@ -184,24 +226,28 @@ export const likePost = async (req, res) => {
     const { id: postId } = req.params;
     const userId = req.userId;
 
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, userId: true } });
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+
     const existingLike = await prisma.like.findUnique({
       where: { userId_postId: { userId, postId } }
     });
 
     if (existingLike) {
       await prisma.like.delete({ where: { id: existingLike.id } });
-      res.json({ success: true, message: 'Post unliked', data: { liked: false } });
+      const likesCount = await prisma.like.count({ where: { postId } });
+      res.json({ success: true, message: 'Post unliked', data: { liked: false, likesCount } });
     } else {
       await prisma.like.create({ data: { userId, postId } });
 
-      const post = await prisma.post.findUnique({ where: { id: postId }, select: { userId: true } });
+      const likesCount = await prisma.like.count({ where: { postId } });
       if (post.userId !== userId) {
         await prisma.notification.create({
           data: { receiverId: post.userId, senderId: userId, type: 'like', postId, message: 'liked your post' }
         });
       }
 
-      res.json({ success: true, message: 'Post liked', data: { liked: true } });
+      res.json({ success: true, message: 'Post liked', data: { liked: true, likesCount } });
     }
   } catch (error) {
     console.error('Like post error:', error);
@@ -215,16 +261,18 @@ export const addComment = async (req, res) => {
     const { content } = req.body;
     const userId = req.userId;
 
-    if (!content) {
-      return res.status(400).json({ success: false, message: 'Comment content is required' });
-    }
+    const normalizedContent = String(content || '').trim();
+    if (!normalizedContent) return res.status(400).json({ success: false, message: 'Comment content is required' });
+    if (normalizedContent.length > MAX_COMMENT_CONTENT) return res.status(400).json({ success: false, message: `Comment cannot exceed ${MAX_COMMENT_CONTENT} characters` });
+
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, userId: true } });
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     const comment = await prisma.comment.create({
-      data: { userId, postId, content },
+      data: { userId, postId, content: normalizedContent },
       include: { user: { select: { id: true, username: true, avatarUrl: true } } }
     });
 
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { userId: true } });
     if (post.userId !== userId) {
       await prisma.notification.create({
         data: { receiverId: post.userId, senderId: userId, type: 'comment', postId, message: 'commented on your post' }
@@ -273,9 +321,13 @@ export const viewPost = async (req, res) => {
 export const reportPost = async (req, res) => {
   try {
     const postId = req.params.id;
-    const reason = String(req.body?.reason || 'other').trim().slice(0, 200);
-    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+    const reason = String(req.body?.reason || '').trim().slice(0, 200);
+    const allowedReasons = new Set(['spam','harassment','hate','nudity','violence','misinformation','copyright','scam','other']);
+    if (!reason) return res.status(400).json({ success: false, message: 'A report reason is required' });
+    if (!allowedReasons.has(reason.toLowerCase())) return res.status(400).json({ success: false, message: 'Invalid report reason' });
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, userId: true } });
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+    if (post.userId === req.userId) return res.status(400).json({ success: false, message: 'You cannot report your own post' });
     const existing = await prisma.report.findUnique({ where: { reporterId_postId: { reporterId: req.userId, postId } } });
     if (existing) return res.status(409).json({ success: false, message: 'You have already reported this post' });
     const report = await prisma.report.create({ data: { reporterId: req.userId, postId, reason: reason || 'other' } });
