@@ -1,14 +1,43 @@
-# RA-Social — Option 10 AI Updated
+# RA Social — Complete Project (merged, single backend)
 
-This package continues from Option 9 and updates the existing RA-Social project only.
+⚠️ IMPORTANT: There is only ONE backend. Both the RA Social app and the
+Admin panel talk to this SAME backend — do not deploy two separate backends.
 
-## Option 10 changes
-- AI conversation history API now supports pagination (`page`, `limit`, max 50) and returns `total`/`hasMore` metadata.
-- AI chat input is normalized and limited to 12,000 characters.
-- AI chat attachment payload is validated as an array and capped at 6 files.
-- AI history UI now has retry handling and a Load more chats control.
-- Existing AI modes, memory, file analysis, research, coding, data, writing, social, creative, video, voice and media workflows are retained.
+## Folders
 
-## Verification
-- Backend AI controller syntax check: passed with `node --check`.
-- Frontend production build was not run because this extracted package has no installed `node_modules` in the execution environment.
+- `backend/`   → Deploy to Render (your existing "Reels AI" service).
+                 This single backend now includes:
+                   - Normal user auth (register/login/profile)
+                   - Forgot password → OTP reset flow (requires the configured reset/OTP delivery setup) → Reset password
+                   - Change password (logged-in users)
+                   - Admin login + admin dashboard APIs (stats/users/posts)
+                   - Auto-creates a default admin account on startup
+                     (an administrator account configured through DEFAULT_ADMIN_EMAIL / DEFAULT_ADMIN_PASSWORD) — no Shell needed.
+                   - Auto-runs database migrations on every deploy.
+
+- `frontend/`  → Deploy to Vercel / GitHub Pages (your existing RA Social
+                 frontend repo, e.g. reels-ai-pearl.vercel.app).
+                 This is the app your users use. Includes PWA support
+                 (installable on mobile/desktop, works offline for the
+                 app shell).
+
+- `admin/`     → Deploy to Vercel (your existing Reels-AI-Admin repo,
+                 e.g. reels-ai-admin.vercel.app). This is for YOU only,
+                 not for regular users.
+
+## Both frontend/ and admin/ must point to the SAME backend URL
+
+- `frontend/.env` → `VITE_API_URL=https://your-backend.onrender.com/api`
+- `admin/.env.local` → `NEXT_PUBLIC_API_URL=https://your-backend.onrender.com`
+
+## After deploying the backend
+
+No manual steps needed — on first boot it will:
+1. Run `npx prisma migrate deploy` automatically (via package.json start script)
+2. Create the default admin account automatically if it doesn't exist
+
+Check Render → Logs after deploying; you should see:
+`✅ Default admin account created: admin@rasocial.com`
+
+## AI Phase 11
+See `PHASE_11_CREATIVE_VIDEO_VOICE_MEMORY_AI.md` for the Creative, Video, Voice transcription, and Personal AI Memory additions.
