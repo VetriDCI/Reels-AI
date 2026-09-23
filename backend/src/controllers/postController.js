@@ -77,6 +77,26 @@ export const updatePost = async (req, res) => {
   }
 };
 
+
+export const getMyCreatorAds = async (req, res) => {
+  try {
+    const ads = await prisma.post.findMany({
+      where: { userId: req.userId, isCreatorAd: true },
+      include: {
+        user: { select: { id: true, username: true, fullName: true, avatarUrl: true } },
+        likes: { select: { id: true } },
+        comments: { select: { id: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json({ success: true, data: ads.map((ad) => ({ ...ad, likesCount: ad.likes.length, commentsCount: ad.comments.length })) });
+  } catch (error) {
+    console.error('Get creator ads error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load Creator Ads' });
+  }
+};
+
 export const getFeed = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;

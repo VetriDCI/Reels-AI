@@ -485,6 +485,32 @@ export const deleteAdminVibe = async (req, res) => {
   }
 };
 
+
+// GET /api/admin/creator-ads
+export const getCreatorAds = async (req, res) => {
+  try {
+    const status = String(req.query.status || 'all');
+    const where = { isCreatorAd: true, ...( ['pending','approved','rejected'].includes(status) ? { status } : {} ) };
+    const ads = await prisma.post.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 300,
+      include: { user: { select: { id: true, username: true, fullName: true, email: true, channelName: true, channelNumber: true } }, likes: { select: { id: true } }, comments: { select: { id: true } } },
+    });
+    res.json(ads.map(a => ({ id:a.id, user_id:a.userId, username:a.user.username, full_name:a.user.fullName, email:a.user.email, channel_name:a.user.channelName, channel_number:a.user.channelNumber, content:a.content, media_url:a.mediaUrl, media_type:a.mediaType, status:a.status, likes:a.likes.length, comments:a.comments.length, created_at:a.createdAt, updated_at:a.updatedAt })));
+  } catch (error) { console.error('Admin creator ads error:', error); res.status(500).json({ error: 'Failed to fetch Creator Ads' }); }
+};
+
+// PATCH /api/admin/creator-ads/:id/status
+export const updateCreatorAdStatus = async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    if (!['approved','rejected'].includes(status)) return res.status(400).json({ error: 'Status must be approved or rejected' });
+    const ad = await prisma.post.findFirst({ where: { id:req.params.id, isCreatorAd:true } });
+    if (!ad) return res.status(404).json({ error: 'Creator Ad not found' });
+    const updated = await prisma.post.update({ where: { id:ad.id }, data: { status } });
+    res.json({ success:true, data:updated });
+  } catch (error) { console.error('Update creator ad status error:', error); res.status(500).json({ error: 'Failed to update Creator Ad' }); }
+};
+
 // GET /api/admin/payouts
 export const getAdminPayouts = async (req, res) => {
   try {
@@ -513,7 +539,8 @@ export const updatePayoutStatus = async (req, res) => {
       if (!payout) throw Object.assign(new Error('Payout not found'), { statusCode: 404 });
       if (payout.status === 'paid' || payout.status === 'rejected') throw Object.assign(new Error(`Payout is already ${payout.status}`), { statusCode: 409 });
       if (status === 'approved' && payout.status !== 'pending') throw Object.assign(new Error('Only pending payouts can be approved'), { statusCode: 409 });
-      if (status === 'paid' && !['pending', 'approved'].includes(payout.status)) throw Object.assign(new Error('Payout cannot be marked paid from its current status'), { statusCode: 409 });
+      if (status === 'rejected' && payout.status !== 'pending') throw Object.assign(new Error('Only pending payouts can be rejected'), { statusCode: 409 });
+      if (status === 'paid' && payout.status !== 'approved') throw Object.assign(new Error('Only approved payouts can be marked paid'), { statusCode: 409 });
 
       if (status === 'paid') {
         const updatedUser = await tx.user.updateMany({ where: { id: payout.userId, earnings: { gte: payout.amount } }, data: { earnings: { decrement: payout.amount } } });

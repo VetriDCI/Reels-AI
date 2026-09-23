@@ -36,8 +36,11 @@ export const requestPayout = async (req, res) => {
       if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
       if (user.monetizationStatus !== 'approved') throw Object.assign(new Error('Monetization is not active'), { statusCode: 403 });
 
-      const pending = await tx.payout.aggregate({ where: { userId: req.userId, status: 'pending' }, _sum: { amount: true } });
-      const reserved = pending._sum.amount || 0;
+      const reservedAgg = await tx.payout.aggregate({
+        where: { userId: req.userId, status: { in: ['pending', 'approved'] } },
+        _sum: { amount: true }
+      });
+      const reserved = reservedAgg._sum.amount || 0;
       const available = Math.max(0, user.earnings - reserved);
       if (amount > available) throw Object.assign(new Error(`Insufficient available balance. Available: ${available.toFixed(2)}`), { statusCode: 400 });
 

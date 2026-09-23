@@ -24,6 +24,7 @@ import accountRoutes from './routes/accountRoutes.js';
 import sessionRoutes from './routes/sessionRoutes.js';
 import watchHistoryRoutes from './routes/watchHistoryRoutes.js';
 import adminMailAiRoutes from './routes/adminMailAiRoutes.js';
+import liveRoutes from './routes/liveRoutes.js';
 import { cleanupOldWatchHistory } from './controllers/watchHistoryController.js';
 import prisma from './config/database.js';
 import bcrypt from 'bcryptjs';
@@ -78,6 +79,7 @@ app.use('/api/ads', adRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/watch-history', watchHistoryRoutes);
+app.use('/api/live-sessions', liveRoutes);
 app.set('io', io);
 
 app.get('/api/health', (req, res) => {

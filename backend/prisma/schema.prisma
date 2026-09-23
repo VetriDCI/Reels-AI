@@ -62,6 +62,7 @@ model User {
   vibeReplies     VibeReply[]
   vibeViews       VibeView[]
   mailAiMails    MailAIMessage[] @relation("MailAiUser")
+  liveSessions  CreatorLiveSession[]
 
   @@index([username])
   @@index([email])
@@ -508,6 +509,22 @@ model AdEvent {
   @@index([createdAt])
 }
 
+
+model CreatorLiveSession {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      String   @default("scheduled")
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
 
 model MailAIMessage {
   id              String          @id @default(uuid())

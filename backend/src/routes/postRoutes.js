@@ -9,7 +9,8 @@ import {
   deletePost,
   viewPost,
   hidePost,
-  reportPost
+  reportPost,
+  getMyCreatorAds
 } from '../controllers/postController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { upload, cloudinary } from '../config/cloudinary.js';
@@ -58,6 +59,7 @@ router.post('/upload', protect, upload.single('file'), (req, res) => {
   });
 });
 router.post('/', protect, createPost);
+router.get('/creator-ads/mine', protect, getMyCreatorAds);
 router.get('/feed', getFeed);
 router.get('/:id', getPostById);
 router.delete('/:id', protect, deletePost);
