@@ -66,7 +66,7 @@ export const updatePost = async (req, res) => {
         mediaUrl: mediaUrl || null,
         mediaType: mediaType || 'text',
         isCreatorAd: Boolean(isCreatorAd),
-        ...(Boolean(isCreatorAd) ? { status: 'pending' } : {}),
+        ...(Boolean(isCreatorAd) ? { status: 'pending' } : { status: existing.status }),
       },
       include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
     });
