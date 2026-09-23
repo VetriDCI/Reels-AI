@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { authAPI, uploadAPI } from '../services/api';
+import api, { authAPI, uploadAPI } from '../services/api';
 import { Camera, Edit2, X } from 'lucide-react';
 
 function ProfilePage() {
@@ -10,8 +10,24 @@ function ProfilePage() {
   const [bio, setBio] = useState(user?.bio || '');
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [posts, setPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(true);
   const avatarInputRef = React.useRef(null);
-  const posts = Array.isArray(user?.posts) ? user.posts.filter((post) => post?.status === 'approved') : [];
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const response = await api.get('/auth/me');
+        if (active) setPosts(response.data?.data?.posts || []);
+      } catch (error) {
+        console.error('Failed to load profile posts:', error);
+      } finally {
+        if (active) setPostsLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const handleSave = async () => {
     setLoading(true);
@@ -135,22 +151,22 @@ function ProfilePage() {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        {posts.length ? posts.map((post) => (
-          <div key={post.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-            {post.mediaUrl ? (
-              post.mediaType === 'video' ? (
+        {postsLoading ? (
+          <div className="col-span-3 py-12 text-center text-sm text-gray-400">Loading posts...</div>
+        ) : posts.length === 0 ? (
+          <div className="col-span-3 py-12 text-center text-sm text-gray-400">No posts yet</div>
+        ) : (
+          posts.map((post) => (
+            <div key={post.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+              {post.mediaUrl && post.mediaType === 'video' ? (
                 <video src={post.mediaUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+              ) : post.mediaUrl ? (
+                <img src={post.mediaUrl} alt={post.content || 'Post'} className="w-full h-full object-cover" />
               ) : (
-                <img src={post.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-              )
-            ) : (
-              <div className="w-full h-full p-3 flex items-center justify-center text-xs text-gray-600 text-center">
-                {post.content || 'Post'}
-              </div>
-            )}
-          </div>
-        )) : (
-          <div className="col-span-3 py-10 text-center text-sm text-gray-400">No posts yet.</div>
+                <p className="p-3 text-xs text-gray-600 text-center line-clamp-6">{post.content || 'Post'}</p>
+              )}
+            </div>
+          ))
         )}
       </div>
     </div>

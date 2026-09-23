@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Megaphone, Video, Image as ImageIcon, Type, Upload, Pencil, Trash2, Save, X, PlayCircle } from 'lucide-react';
-import api, { postAPI, uploadAPI } from '../services/api';
+import { postAPI, uploadAPI } from '../services/api';
 
 const MAX = 50 * 1024 * 1024;
 const MAX_TEXT = 2000;
@@ -22,8 +22,8 @@ export default function CreatorAdsPage({ user, onBack }) {
   const loadAds = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/auth/me');
-      const all = res.data?.data?.posts || [];
+      const res = await postAPI.getFeed(1, 100);
+      const all = res.data?.data || [];
       setAds(all.filter(p => p?.userId === user?.id && p?.isCreatorAd));
     } catch (e) {
       console.error('Failed to load creator ads', e);
@@ -136,7 +136,7 @@ export default function CreatorAdsPage({ user, onBack }) {
       {!editing && <section className="bg-white rounded-2xl shadow-sm p-5 mb-5 border border-purple-100"><div className="flex items-center gap-3"><div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"><Megaphone className="w-6 h-6 text-white" /></div><div><h2 className="font-bold text-gray-900">Your Creator Ads</h2><p className="text-sm text-gray-500">Ads created here appear on Home and are mixed into Reels.</p></div></div></section>}
 
       {loading ? <div className="py-16 text-center text-gray-400">Loading ads...</div> : !ads.length ? <div className="bg-white rounded-2xl p-8 text-center shadow-sm"><Megaphone className="w-12 h-12 mx-auto text-purple-300 mb-3" /><h3 className="font-bold text-gray-800">No Creator Ads yet</h3><p className="text-sm text-gray-500 mt-1">Create your first promotional post from the button above.</p>{!editing && <button onClick={startCreate} className="mt-4 px-5 py-2.5 rounded-full bg-purple-600 text-white font-semibold">Create Ad</button>}</div> : <div className="space-y-4">{ads.map(ad => <article key={ad.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 flex items-center justify-between"><div className="flex items-center gap-2"><span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-bold">CREATOR AD</span><span className="text-xs text-gray-400">{new Date(ad.createdAt).toLocaleDateString()}</span><span className={`text-xs font-semibold px-2 py-1 rounded-full ${ad.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : ad.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{ad.status === 'approved' ? 'Approved' : ad.status === 'rejected' ? 'Rejected' : 'Pending review'}</span></div><div className="flex gap-1"><button onClick={() => startEdit(ad)} className="p-2 rounded-full hover:bg-blue-50 text-blue-600"><Pencil className="w-4 h-4" /></button><button onClick={() => remove(ad)} className="p-2 rounded-full hover:bg-red-50 text-red-500"><Trash2 className="w-4 h-4" /></button></div></div>
+        <div className="p-4 flex items-center justify-between"><div className="flex items-center gap-2"><span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-bold">CREATOR AD</span><span className="text-xs text-gray-400">{new Date(ad.createdAt).toLocaleDateString()}</span></div><div className="flex gap-1"><button onClick={() => startEdit(ad)} className="p-2 rounded-full hover:bg-blue-50 text-blue-600"><Pencil className="w-4 h-4" /></button><button onClick={() => remove(ad)} className="p-2 rounded-full hover:bg-red-50 text-red-500"><Trash2 className="w-4 h-4" /></button></div></div>
         {ad.mediaUrl && (ad.mediaType === 'video' ? <video src={ad.mediaUrl} controls className="w-full max-h-[520px] bg-black object-contain" /> : <img src={ad.mediaUrl} alt="Creator ad" className="w-full max-h-[520px] object-contain bg-gray-50" />)}
         {ad.content && <p className="px-4 py-3 text-gray-800 whitespace-pre-wrap">{ad.content}</p>}
       </article>)}</div>}
