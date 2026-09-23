@@ -11,6 +11,7 @@ function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = React.useRef(null);
+  const posts = Array.isArray(user?.posts) ? user.posts.filter((post) => post?.status === 'approved') : [];
 
   const handleSave = async () => {
     setLoading(true);
@@ -134,9 +135,23 @@ function ProfilePage() {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
-          <div key={i} className="aspect-square bg-gray-200 rounded-lg"></div>
-        ))}
+        {posts.length ? posts.map((post) => (
+          <div key={post.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+            {post.mediaUrl ? (
+              post.mediaType === 'video' ? (
+                <video src={post.mediaUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+              ) : (
+                <img src={post.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+              )
+            ) : (
+              <div className="w-full h-full p-3 flex items-center justify-center text-xs text-gray-600 text-center">
+                {post.content || 'Post'}
+              </div>
+            )}
+          </div>
+        )) : (
+          <div className="col-span-3 py-10 text-center text-sm text-gray-400">No posts yet.</div>
+        )}
       </div>
     </div>
   );
