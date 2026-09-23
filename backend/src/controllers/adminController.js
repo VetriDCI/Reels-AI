@@ -68,35 +68,53 @@ export const adminForgotPassword = async (req, res) => {
   }
 };
 
-// GET /api/admin/stats
+// GET /api/admin/stats?range=today|week|month|year
 export const getAdminStats = async (req, res) => {
   try {
-    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, totalViewsAgg, pendingReports, pendingPayoutsAgg] = await Promise.all([
-      prisma.user.count(),
-      prisma.post.count(),
-      prisma.post.count({ where: { mediaType: 'video' } }),
+    const range = String(req.query?.range || 'month').toLowerCase();
+    const now = new Date();
+    const start = new Date(now);
+    if (range === 'today') start.setHours(0, 0, 0, 0);
+    else if (range === 'week') { start.setDate(start.getDate() - 6); start.setHours(0, 0, 0, 0); }
+    else if (range === 'year') { start.setMonth(0, 1); start.setHours(0, 0, 0, 0); }
+    else { start.setMonth(start.getMonth() - 1); }
+    const allowedRange = ['today', 'week', 'month', 'year'].includes(range) ? range : 'month';
+    const dateWhere = { createdAt: { gte: start, lte: now } };
+    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, totalViews, pendingReports, pendingPayoutsAgg] = await Promise.all([
+      prisma.user.count({ where: dateWhere }),
+      prisma.post.count({ where: dateWhere }),
+      prisma.post.count({ where: { ...dateWhere, mediaType: 'video' } }),
       prisma.user.count({ where: { status: 'active' } }),
-      prisma.user.aggregate({ _sum: { earnings: true } }),
-      prisma.post.aggregate({ _sum: { viewCount: true } }),
+      prisma.creatorEarning.aggregate({ where: dateWhere, _sum: { amount: true } }),
+      prisma.postView.count({ where: dateWhere }),
       prisma.report.count({ where: { status: 'pending' } }),
       prisma.payout.aggregate({ where: { status: { in: ['pending', 'approved'] } }, _sum: { amount: true } }),
     ]);
-
-    // Pending/approved payout requests are reserved against creator earnings.
-    // Views and pending reports come from the real database fields/models.
     res.json({
-      totalUsers,
-      totalPosts,
-      totalReels,
-      pendingPayouts: pendingPayoutsAgg._sum.amount || 0,
-      activeUsers,
-      reportedContent: pendingReports,
-      totalEarnings: earningsAgg._sum.earnings || 0,
-      totalViews: totalViewsAgg._sum.viewCount || 0,
+      range: allowedRange, from: start.toISOString(), to: now.toISOString(),
+      totalUsers, totalPosts, totalReels, pendingPayouts: pendingPayoutsAgg._sum.amount || 0,
+      activeUsers, reportedContent: pendingReports, totalEarnings: earningsAgg._sum.amount || 0, totalViews,
     });
   } catch (error) {
     console.error('Admin stats error:', error);
     res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+};
+
+// POST /api/admin/logout
+export const adminLogout = async (req, res) => {
+  try {
+    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    if (token) {
+      const decoded = jwt.decode(token);
+      if (decoded?.jti) {
+        await prisma.session.updateMany({ where: { tokenId: decoded.jti, userId: req.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      }
+    }
+    return res.json({ success: true, message: 'Admin session logged out' });
+  } catch (error) {
+    console.error('Admin logout error:', error);
+    return res.status(500).json({ error: 'Failed to log out admin session' });
   }
 };
 
@@ -282,15 +300,30 @@ export const updateMonetizationApplication = async (req, res) => {
       return res.status(400).json({ error: 'Status must be "approved" or "rejected"' });
     }
 
+    const existing = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id:true, username:true, monetizationStatus:true } });
+    if (!existing) return res.status(404).json({ error: 'User not found' });
+    if (existing.monetizationStatus !== 'pending') return res.status(409).json({ error: `Monetization application is already ${existing.monetizationStatus}` });
+
     const data = {
       monetizationStatus: status === 'approved' ? 'approved' : 'not_eligible',
       ...(status === 'approved' ? { monetizationApprovedAt: new Date() } : { monetizationApprovedAt: null }),
     };
 
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data,
-      select: { id: true, username: true, monetizationStatus: true, monetizationApprovedAt: true },
+    const user = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id: req.params.id },
+        data,
+        select: { id: true, username: true, monetizationStatus: true, monetizationApprovedAt: true },
+      });
+      await tx.notification.create({
+        data: {
+          receiverId: updated.id,
+          senderId: req.userId,
+          type: status === 'approved' ? 'monetization_approved' : 'monetization_rejected',
+          message: status === 'approved' ? 'Your monetization application was approved.' : 'Your monetization application was rejected.',
+        },
+      });
+      return updated;
     });
 
     res.json(user);
@@ -504,9 +537,22 @@ export const updateCreatorAdStatus = async (req, res) => {
   try {
     const { status } = req.body || {};
     if (!['approved','rejected'].includes(status)) return res.status(400).json({ error: 'Status must be approved or rejected' });
-    const ad = await prisma.post.findFirst({ where: { id:req.params.id, isCreatorAd:true } });
+    const ad = await prisma.post.findFirst({ where: { id:req.params.id, isCreatorAd:true }, select: { id:true, userId:true, status:true } });
     if (!ad) return res.status(404).json({ error: 'Creator Ad not found' });
-    const updated = await prisma.post.update({ where: { id:ad.id }, data: { status } });
+    if (ad.status !== 'pending') return res.status(409).json({ error: `Creator Ad is already ${ad.status}` });
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.post.update({ where: { id:ad.id }, data: { status } });
+      await tx.notification.create({
+        data: {
+          receiverId: ad.userId,
+          senderId: req.userId,
+          postId: ad.id,
+          type: status === 'approved' ? 'creator_ad_approved' : 'creator_ad_rejected',
+          message: status === 'approved' ? 'Your Creator Ad was approved.' : 'Your Creator Ad was rejected.',
+        },
+      });
+      return next;
+    });
     res.json({ success:true, data:updated });
   } catch (error) { console.error('Update creator ad status error:', error); res.status(500).json({ error: 'Failed to update Creator Ad' }); }
 };
@@ -547,7 +593,11 @@ export const updatePayoutStatus = async (req, res) => {
         if (updatedUser.count !== 1) throw Object.assign(new Error('Creator balance is insufficient for this payout'), { statusCode: 409 });
       }
 
-      return tx.payout.update({ where: { id }, data: { status, adminNote: adminNote ? String(adminNote).slice(0, 500) : payout.adminNote, processedAt: new Date(), paidAt: status === 'paid' ? new Date() : payout.paidAt } });
+      const updated = await tx.payout.update({ where: { id }, data: { status, adminNote: adminNote ? String(adminNote).slice(0, 500) : payout.adminNote, processedAt: new Date(), paidAt: status === 'paid' ? new Date() : payout.paidAt } });
+      const type = status === 'approved' ? 'payout_approved' : status === 'paid' ? 'payout_paid' : 'payout_rejected';
+      const message = status === 'approved' ? `Your payout of ${payout.currency} ${payout.amount.toFixed(2)} was approved.` : status === 'paid' ? `Your payout of ${payout.currency} ${payout.amount.toFixed(2)} was marked paid.` : `Your payout of ${payout.currency} ${payout.amount.toFixed(2)} was rejected.`;
+      await tx.notification.create({ data: { receiverId: payout.userId, senderId: req.userId, type, message } });
+      return updated;
     });
     res.json({ success: true, data: result });
   } catch (error) {
