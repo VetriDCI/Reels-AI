@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Image, Video, Radio, Pencil, RefreshCw } from 'lucide-react';
+import { X, Image, Video, Radio, RotateCcw, Pencil, Check, RefreshCw, Play, Pause } from 'lucide-react';
 import { postAPI, uploadAPI } from '../services/api';
 import MediaEditor from './MediaEditor';
 
@@ -13,19 +13,52 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
   const [previewUrl, setPreviewUrl] = useState(null);
   const [mediaKind, setMediaKind] = useState(null);
   const [uploadStage, setUploadStage] = useState(null);
+  const [livePreview, setLivePreview] = useState(false);
+  const [liveState, setLiveState] = useState('idle');
+  const [cameraError, setCameraError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [isCreatorAd, setIsCreatorAd] = useState(Boolean(initialDraft?.isCreatorAd));
   const [imageRotation, setImageRotation] = useState(0);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const appendSelectionRef = useRef(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   const loading = uploadStage !== null;
 
+  // Stop camera only when the modal unmounts. The old effect depended on
+  // previewUrl, which stopped the live camera every time media selection changed.
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+  }, []);
+
+  // Revoke each object URL when it is replaced/unmounted to avoid leaking blobs.
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
 
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setLivePreview(false); setLiveState('idle');
+  };
+
+  const startLivePreview = async () => {
+    setCameraError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Live camera is not supported by this browser.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      streamRef.current = stream;
+      setLivePreview(true); setLiveState('live');
+      requestAnimationFrame(() => { if (videoRef.current) videoRef.current.srcObject = stream; });
+    } catch {
+      setCameraError('Camera/microphone permission was denied or is unavailable.');
+    }
+  };
 
   const pickPhoto = (append = false) => { appendSelectionRef.current = append; photoInputRef.current?.click(); };
   const pickVideo = (append = false) => { appendSelectionRef.current = append; videoInputRef.current?.click(); };
@@ -148,6 +181,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
       }
       if (savedDraftId) { const key = `ra-social-drafts-${userId || 'guest'}`; const drafts = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify(drafts.filter(d => d.id !== savedDraftId))); }
       onPostCreated?.();
+      stopCamera();
       onClose();
     } catch (error) {
       console.error('Failed to create post:', error);
@@ -160,7 +194,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     <div className="fixed inset-0 bg-black/60 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-xl max-h-[92vh] overflow-y-auto">
         <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
-          <button onClick={onClose} aria-label="Close" disabled={loading}><X className="w-6 h-6 text-gray-600" /></button>
+          <button onClick={() => { stopCamera(); onClose(); }} aria-label="Close" disabled={loading}><X className="w-6 h-6 text-gray-600" /></button>
           <h2 className="font-semibold">Create Post</h2>
           <div className="flex items-center gap-3"><button onClick={saveDraft} disabled={loading || draftSaving || (!content.trim() && !files.length && !initialDraft?.mediaUrl)} className="text-gray-600 text-sm font-semibold disabled:opacity-50">{draftSaving ? 'Saving…' : 'Save draft'}</button><button onClick={handleSubmit} disabled={loading || draftSaving || (!content.trim() && !files.length && !initialDraft?.mediaUrl)} className="text-purple-600 font-semibold disabled:opacity-50">Post</button></div>
         </div>
@@ -176,7 +210,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
         <div className="p-4 space-y-4">
           <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="What's on your mind?" className="w-full h-32 resize-none focus:outline-none text-gray-800" />
 
-          {!previewUrl && (
+          {!previewUrl && !livePreview && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <button type="button" onClick={pickPhoto} className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-5 hover:bg-gray-50">
                 <Image className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Photo</span><span className="text-[11px] text-gray-400">Select multiple photos</span>
@@ -184,9 +218,8 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
               <button type="button" onClick={pickVideo} className="flex flex-col items-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-5 hover:bg-gray-50">
                 <Video className="w-7 h-7 text-gray-600" /><span className="text-sm font-semibold text-gray-700">Video</span><span className="text-[11px] text-gray-400">Select multiple videos</span>
               </button>
-              <button type="button" disabled className="relative flex flex-col items-center gap-2 border-2 border-dashed border-red-200 bg-red-50/60 rounded-xl py-5 cursor-not-allowed opacity-90">
-                <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-bold">SOON</span>
-                <Radio className="w-7 h-7 text-red-400" /><span className="text-sm font-bold text-red-500">LIVE</span><span className="text-[11px] text-red-400">Coming Soon</span>
+              <button type="button" onClick={startLivePreview} className="flex flex-col items-center gap-2 border-2 border-red-300 bg-red-50 rounded-xl py-5 hover:bg-red-100">
+                <Radio className="w-7 h-7 text-red-600" /><span className="text-sm font-bold text-red-600">LIVE</span><span className="text-[11px] text-red-500">Camera</span>
               </button>
             </div>
           )}
@@ -215,6 +248,19 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
 
           {editOpen && previewUrl && file && <MediaEditor file={file} mediaType={mediaKind === 'video' ? 'video' : 'image'} onApply={applyEditedMedia} onClose={() => setEditOpen(false)} />}
 
+          {livePreview && (
+            <div className="border-2 border-red-200 rounded-xl p-4 bg-red-50">
+              <div className="flex items-center justify-between gap-3">
+                <div><p className="font-bold text-red-600">● LIVE CAMERA</p><p className="text-xs text-gray-500">Camera preview only. A real public multi-user livestream requires a streaming service/server.</p></div>
+                <div className="flex gap-2">
+                  <button onClick={() => { if (videoRef.current) { if (videoRef.current.paused) { videoRef.current.play(); setLiveState('live'); } else { videoRef.current.pause(); setLiveState('paused'); } } }} className="flex items-center gap-2 px-3 py-2 bg-white border rounded-full text-sm font-semibold">{liveState === 'live' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}{liveState === 'live' ? 'Pause' : 'Resume'}</button>
+                  <button onClick={stopCamera} className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-full"><X className="w-4 h-4" />Stop</button>
+                </div>
+              </div>
+              <video ref={videoRef} autoPlay muted playsInline className="mt-3 w-full max-h-80 rounded-lg bg-black object-cover" />
+              {cameraError && <p className="text-sm text-red-600 mt-2">{cameraError}</p>}
+            </div>
+          )}
         </div>
       </div>
     </div>

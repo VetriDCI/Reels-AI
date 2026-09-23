@@ -92,6 +92,14 @@ export const monetizationAPI = {
   analytics: (days = 30) => api.get(`/monetization/analytics?days=${days}`)
 };
 
+export const liveAPI = {
+  list: () => api.get('/live-sessions'),
+  create: (data) => api.post('/live-sessions', data),
+  start: (id) => api.patch(`/live-sessions/${id}/start`),
+  end: (id) => api.patch(`/live-sessions/${id}/end`),
+  remove: (id) => api.delete(`/live-sessions/${id}`),
+};
+
 export const payoutAPI = {
   list: () => api.get('/payouts'),
   request: (data) => api.post('/payouts', data)

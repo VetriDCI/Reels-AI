@@ -29,6 +29,7 @@ import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage
 import CreatePostModal from './components/CreatePostModal';
 import PostCard from './components/PostCard';
 import InstallPrompt from './components/InstallPrompt';
+import GuestProfilePage from './pages/GuestProfilePage';
 
 function AppContent() {
   const { user, loading, logout } = useAuth();
@@ -120,6 +121,11 @@ function AppContent() {
   };
 
   useEffect(() => {
+    if (!user) {
+      setUnreadNotificationCount(0);
+      return undefined;
+    }
+
     const refreshUnreadNotifications = async () => {
       try {
         const response = await notificationAPI.getNotifications();
@@ -137,7 +143,7 @@ function AppContent() {
       window.removeEventListener('ra:notifications-updated', handleNotificationUpdate);
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     try {
@@ -164,7 +170,7 @@ function AppContent() {
     );
   }
 
-  if (!user) {
+  if (!user && ['/login', '/register', '/forgot-password', '/verify-otp', '/reset-password', '/2fa-login'].includes(window.location.pathname)) {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -177,6 +183,10 @@ function AppContent() {
       </Routes>
     );
   }
+
+  const requireLogin = () => {
+    if (!user) window.location.assign('/login');
+  };
 
   const isFullScreenTab = activeTab === 'reels' || activeTab === 'me';
   // Search is an inline control; it must never become its own page.
@@ -201,9 +211,9 @@ function AppContent() {
       <main className={isFullScreenTab ? '' : 'pb-20'}>
         {activeTab === 'home' && <HomeFeed posts={posts} setPosts={setPosts} refreshKey={feedRefresh} onOpenReel={openReel} searchQuery={contextSearchQuery} />}
         {activeTab === 'reels' && <ReelsPage onNotifications={() => navigateTab('notifications')} unreadNotificationCount={unreadNotificationCount} onSearch={openSearch} searchOpen={contextSearchOpen} searchQuery={contextSearchQuery} onSearchChange={setContextSearchQuery} onCloseSearch={closeContextSearch} initialPostId={reelTarget?.id} />}
-        {activeTab === 'ai' && <AIFeatures searchQuery={contextSearchQuery} />}
-        {activeTab === 'chat' && <ChatPage searchQuery={contextSearchQuery} />}
-        {activeTab === 'me' && <MePage onLogout={logout} onOpenReportHistory={() => navigateTab('report-history')} onBack={() => navigateTab('home')} onOpenDrafts={() => navigateTab('drafts')} />}
+        {activeTab === 'ai' && (user ? <AIFeatures searchQuery={contextSearchQuery} /> : <GuestLoginGate title="AI" onLogin={requireLogin} />)}
+        {activeTab === 'chat' && (user ? <ChatPage searchQuery={contextSearchQuery} /> : <GuestLoginGate title="Chat" onLogin={requireLogin} />)}
+        {activeTab === 'me' && (user ? <MePage onLogout={logout} onOpenReportHistory={() => navigateTab('report-history')} onBack={() => navigateTab('home')} onOpenDrafts={() => navigateTab('drafts')} /> : <GuestProfilePage onLogin={requireLogin} />)}
         {activeTab === 'notifications' && <NotificationsPage searchQuery={contextSearchQuery} />}
         {activeTab === 'search' && <SearchPage initialQuery={searchQuery} source={searchSource} onBack={() => navigateTab(searchSource || 'home')} onOpenProfile={openProfile} onOpenHashtag={openHashtag} />}
         {activeTab === 'saved' && <SavedPostsPage onBack={() => navigateTab(savedReturnTab)} searchQuery={contextSearchQuery} />}
@@ -218,7 +228,7 @@ function AppContent() {
         <CreatePostModal userId={user?.id} isCreator={Boolean(user?.channelNumber)} initialDraft={draftToEdit} onClose={() => { setShowCreateModal(false); setDraftToEdit(null); }} onDraftSaved={() => {}} onPostCreated={() => setFeedRefresh((prev) => prev + 1)} />
       )}
 
-      <BottomNav activeTab={activeTab} setActiveTab={navigateTab} setShowCreateModal={setShowCreateModal} isFullScreenTab={isFullScreenTab} />
+      <BottomNav activeTab={activeTab} setActiveTab={navigateTab} setShowCreateModal={setShowCreateModal} isFullScreenTab={isFullScreenTab} isAuthenticated={Boolean(user)} onRequireLogin={requireLogin} />
       {activeTab === 'me' && (
         <button onClick={() => openSearch('')} aria-label="Search" className="fixed right-4 top-4 z-[70] w-11 h-11 rounded-full bg-white/95 shadow-lg border flex items-center justify-center">
           <Search className="w-5 h-5 text-gray-700" />
@@ -278,7 +288,19 @@ function TopBar({ onNotifications, unreadNotificationCount, onSearch, searchOpen
   );
 }
 
-function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTab }) {
+function GuestLoginGate({ title, onLogin }) {
+  return (
+    <div className="min-h-[calc(100vh-80px)] flex items-center justify-center px-6 pt-16 pb-24 bg-gray-50">
+      <div className="w-full max-w-md rounded-3xl bg-white border border-gray-200 shadow-sm p-8 text-center">
+        <h2 className="text-2xl font-bold text-gray-900">Login to use {title}</h2>
+        <p className="mt-2 text-sm text-gray-500">Please login to continue.</p>
+        <button onClick={onLogin} className="mt-6 w-full rounded-xl bg-gradient-to-r from-pink-500 to-blue-500 px-5 py-3 font-semibold text-white">Login</button>
+      </div>
+    </div>
+  );
+}
+
+function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTab, isAuthenticated, onRequireLogin }) {
   const navItems = [
     { id: 'home', icon: Home, label: 'Home' },
     { id: 'reels', icon: Film, label: 'Reels' },
@@ -288,6 +310,14 @@ function BottomNav({ activeTab, setActiveTab, setShowCreateModal, isFullScreenTa
   ];
 
   const handleNavClick = (itemId) => {
+    if (itemId === 'ai' || itemId === 'chat') {
+      if (!isAuthenticated) {
+        onRequireLogin();
+        return;
+      }
+      setActiveTab(itemId);
+      return;
+    }
     if (itemId === 'create') {
       setShowCreateModal(true);
     } else {
