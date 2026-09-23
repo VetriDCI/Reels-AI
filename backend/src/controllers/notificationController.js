@@ -28,16 +28,40 @@ export const getNotifications = async (req, res) => {
 export const markAsRead = async (req, res) => {
   try {
     const userId = req.userId;
+    const notificationId = req.params.id;
 
-    await prisma.notification.updateMany({
-      where: { receiverId: userId, isRead: false },
-      data: { isRead: true }
+    const notification = await prisma.notification.findUnique({
+      where: { id: notificationId },
+      select: { id: true, receiverId: true, isRead: true }
     });
 
-    res.json({ success: true, message: 'Notifications marked as read' });
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+
+    if (notification.receiverId !== userId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    if (!notification.isRead) {
+      await prisma.notification.update({
+        where: { id: notificationId },
+        data: { isRead: true }
+      });
+    }
+
+    const unreadCount = await prisma.notification.count({
+      where: { receiverId: userId, isRead: false }
+    });
+
+    res.json({
+      success: true,
+      message: 'Notification marked as read',
+      data: { unreadCount }
+    });
   } catch (error) {
-    console.error('Mark as read error:', error);
-    res.status(500).json({ success: false, message: 'Failed to mark notifications' });
+    console.error('Mark notification as read error:', error);
+    res.status(500).json({ success: false, message: 'Failed to mark notification' });
   }
 };
 

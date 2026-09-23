@@ -28,9 +28,6 @@ function NotificationsPage({ searchQuery = '' }) {
 
   useEffect(() => {
     fetchNotifications();
-    notificationAPI.markAsRead().then(() => {
-      window.dispatchEvent(new Event('ra:notifications-updated'));
-    }).catch(() => {});
   }, []);
 
   const fetchNotifications = async () => {
@@ -52,6 +49,27 @@ function NotificationsPage({ searchQuery = '' }) {
       case 'comment': return <MessageCircle className="w-6 h-6 text-blue-500" />;
       case 'follow': return <User className="w-6 h-6 text-green-500" />;
       default: return <Bell className="w-6 h-6 text-gray-500" />;
+    }
+  };
+
+  const markOneAsRead = async (notification) => {
+    if (!notification || notification.isRead) return;
+
+    // Update the UI immediately so the unread count changes as soon as
+    // this notification is viewed, without marking other notifications read.
+    setNotifications(prev =>
+      prev.map(item => item.id === notification.id ? { ...item, isRead: true } : item)
+    );
+
+    try {
+      await notificationAPI.markAsRead(notification.id);
+      window.dispatchEvent(new Event('ra:notifications-updated'));
+    } catch (error) {
+      // Restore the unread state if the server update fails.
+      setNotifications(prev =>
+        prev.map(item => item.id === notification.id ? { ...item, isRead: false } : item)
+      );
+      console.error('Failed to mark notification as read:', error);
     }
   };
 
@@ -107,7 +125,11 @@ function NotificationsPage({ searchQuery = '' }) {
       ) : (
         <div className="max-w-3xl mx-auto space-y-3">
           {visibleNotifications.map((notification) => (
-            <div key={notification.id} className={`flex items-center gap-3 sm:gap-4 p-4 bg-white rounded-2xl shadow-sm border ${!notification.isRead ? 'border-purple-200' : 'border-gray-100'}`}>
+            <div
+              key={notification.id}
+              onClick={() => markOneAsRead(notification)}
+              className={`flex items-center gap-3 sm:gap-4 p-4 bg-white rounded-2xl shadow-sm border cursor-pointer transition ${!notification.isRead ? 'border-purple-200 bg-purple-50/30' : 'border-gray-100'}`}
+            >
               <div className="flex-shrink-0">{getIcon(notification.type)}</div>
               <img src={notification.sender?.avatarUrl || `https://i.pravatar.cc/150?u=${notification.senderId || notification.id}`} alt="" className="w-11 h-11 rounded-full object-cover" />
               <div className="flex-1 min-w-0">
@@ -116,7 +138,10 @@ function NotificationsPage({ searchQuery = '' }) {
                 <p className="text-xs text-gray-400 mt-1">{new Date(notification.createdAt).toLocaleString()}</p>
               </div>
               <button
-                onClick={() => setConfirm({ type: 'one', id: notification.id })}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setConfirm({ type: 'one', id: notification.id });
+                }}
                 className="p-2 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 shrink-0"
                 aria-label="Delete notification"
                 title="Delete notification"

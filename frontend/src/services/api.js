@@ -109,7 +109,7 @@ export const searchAPI = {
 
 export const notificationAPI = {
   getNotifications: () => api.get('/notifications'),
-  markAsRead: () => api.put('/notifications/read'),
+  markAsRead: (id) => api.put(`/notifications/${id}/read`),
   deleteOne: (id) => api.delete(`/notifications/${id}`),
   deleteAll: () => api.delete('/notifications')
 };
