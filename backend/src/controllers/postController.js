@@ -23,7 +23,7 @@ export const createPost = async (req, res) => {
     }
 
     const post = await prisma.post.create({
-      data: { userId, content: content?.trim() || null, mediaUrl: mediaUrl || null, mediaType: mediaType || 'text', isCreatorAd: creatorAd },
+      data: { userId, content: content?.trim() || null, mediaUrl: mediaUrl || null, mediaType: mediaType || 'text', isCreatorAd: creatorAd, status: creatorAd ? 'pending' : 'approved' },
       include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
     });
 
@@ -66,6 +66,7 @@ export const updatePost = async (req, res) => {
         mediaUrl: mediaUrl || null,
         mediaType: mediaType || 'text',
         isCreatorAd: Boolean(isCreatorAd),
+        ...(Boolean(isCreatorAd) ? { status: 'pending' } : {}),
       },
       include: { user: { select: { id: true, username: true, fullName: true, avatarUrl: true } } }
     });
