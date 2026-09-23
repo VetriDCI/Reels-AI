@@ -56,6 +56,7 @@ export const uploadAPI = {
 export const postAPI = {
   create: (data) => api.post('/posts', data),
   getFeed: (page = 1, limit = 10) => api.get(`/posts/feed?page=${page}&limit=${limit}`),
+  getMyCreatorAds: () => api.get('/posts/creator-ads/mine'),
   getById: (id) => api.get(`/posts/${id}`),
   update: (id, data) => api.patch(`/posts/${id}`, data),
   delete: (id) => api.delete(`/posts/${id}`),
@@ -89,6 +90,14 @@ export const monetizationAPI = {
   status: () => api.get('/monetization/status'),
   apply: () => api.post('/monetization/apply'),
   analytics: (days = 30) => api.get(`/monetization/analytics?days=${days}`)
+};
+
+export const liveAPI = {
+  list: () => api.get('/live-sessions'),
+  create: (data) => api.post('/live-sessions', data),
+  start: (id) => api.patch(`/live-sessions/${id}/start`),
+  end: (id) => api.patch(`/live-sessions/${id}/end`),
+  remove: (id) => api.delete(`/live-sessions/${id}`),
 };
 
 export const payoutAPI = {

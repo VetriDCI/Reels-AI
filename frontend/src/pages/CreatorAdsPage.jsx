@@ -22,9 +22,8 @@ export default function CreatorAdsPage({ user, onBack }) {
   const loadAds = async () => {
     setLoading(true);
     try {
-      const res = await postAPI.getFeed(1, 100);
-      const all = res.data?.data || [];
-      setAds(all.filter(p => p?.userId === user?.id && p?.isCreatorAd));
+      const res = await postAPI.getMyCreatorAds();
+      setAds(res.data?.data || []);
     } catch (e) {
       console.error('Failed to load creator ads', e);
     } finally { setLoading(false); }
