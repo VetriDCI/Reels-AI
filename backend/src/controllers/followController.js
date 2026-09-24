@@ -48,3 +48,23 @@ export const getFollowStatus = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to get follow status' });
   }
 };
+
+const listConnections = async (req, res, mode) => {
+  try {
+    const userId = req.userId;
+    const where = mode === 'followers' ? { followingId: userId } : { followerId: userId };
+    const relation = mode === 'followers' ? 'follower' : 'following';
+    const rows = await prisma.follow.findMany({
+      where,
+      include: { [relation]: { select: { id: true, username: true, fullName: true, avatarUrl: true, bio: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+    return res.json({ success: true, data: { users: rows.map((row) => row[relation]) } });
+  } catch (error) {
+    console.error(`List ${mode} error:`, error);
+    return res.status(500).json({ success: false, message: `Failed to load ${mode}` });
+  }
+};
+
+export const getMyFollowers = (req, res) => listConnections(req, res, 'followers');
+export const getMyFollowing = (req, res) => listConnections(req, res, 'following');
