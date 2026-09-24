@@ -528,8 +528,8 @@ model CreatorLiveSession {
 
 model MailAIMessage {
   id              String          @id @default(uuid())
-  userId          String
-  user            User            @relation("MailAiUser", fields: [userId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?           @relation("MailAiUser", fields: [userId], references: [id], onDelete: Cascade)
   senderEmail     String
   receiverEmail   String
   subject         String
