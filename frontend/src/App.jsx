@@ -36,6 +36,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
   const [posts, setPosts] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [feedRefresh, setFeedRefresh] = useState(0);
   const [reelTarget, setReelTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,6 +74,7 @@ function AppContent() {
       const previous = event.state?.raTab || 'home';
       suppressHistoryRef.current = true;
       setShowCreateModal(false);
+      setShowLoginPrompt(false);
       setDraftToEdit(null);
       setActiveTab(previous);
       window.setTimeout(() => { suppressHistoryRef.current = false; }, 0);
@@ -185,7 +187,12 @@ function AppContent() {
   }
 
   const requireLogin = () => {
-    if (!user) window.location.assign('/login');
+    if (!user) setShowLoginPrompt(true);
+  };
+
+  const continueToLogin = () => {
+    setShowLoginPrompt(false);
+    window.location.assign('/login');
   };
 
   const isFullScreenTab = activeTab === 'reels' || activeTab === 'me';
@@ -226,6 +233,23 @@ function AppContent() {
 
       {showCreateModal && (
         <CreatePostModal userId={user?.id} isCreator={Boolean(user?.channelNumber)} initialDraft={draftToEdit} onClose={() => { setShowCreateModal(false); setDraftToEdit(null); }} onDraftSaved={() => {}} onPostCreated={() => setFeedRefresh((prev) => prev + 1)} />
+      )}
+
+      {showLoginPrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-5" onClick={() => setShowLoginPrompt(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Login Required</h3>
+              <button onClick={() => setShowLoginPrompt(false)} aria-label="Close" className="rounded-full p-2 text-gray-500 hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-gray-600">Please login to continue.</p>
+            <button onClick={continueToLogin} className="mt-5 w-full rounded-xl bg-gradient-to-r from-pink-500 to-blue-500 px-5 py-3 font-semibold text-white">
+              OK
+            </button>
+          </div>
+        </div>
       )}
 
       <BottomNav activeTab={activeTab} setActiveTab={navigateTab} setShowCreateModal={setShowCreateModal} isFullScreenTab={isFullScreenTab} isAuthenticated={Boolean(user)} onRequireLogin={requireLogin} />
