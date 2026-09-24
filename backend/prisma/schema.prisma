@@ -528,10 +528,11 @@ model CreatorLiveSession {
 
 model MailAIMessage {
   id              String          @id @default(uuid())
-  userId          String
-  user            User            @relation("MailAiUser", fields: [userId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?           @relation("MailAiUser", fields: [userId], references: [id], onDelete: SetNull)
   senderEmail     String
   receiverEmail   String
+  externalId      String?         @unique
   subject         String
   body            String
   status          String          @default("pending")

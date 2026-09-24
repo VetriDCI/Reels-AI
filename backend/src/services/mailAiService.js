@@ -1,3 +1,5 @@
+import groqAI from './groqAIService.js';
+
 const clean = (s = '') => String(s).replace(/\s+/g, ' ').trim();
 const sentences = (s) => clean(s).split(/(?<=[.!?])\s+/).filter(Boolean);
 
@@ -20,7 +22,30 @@ export function analyzeMail(subject = '', body = '') {
   return { summary, sentiment, urgency, category, spamScore, phishingRisk };
 }
 
-export function generateReply({ senderEmail, subject, body, analysis }) {
+export async function generateReply({ senderEmail, subject, body, analysis }) {
+  try {
+    const prompt = [
+      'Write a professional customer-support email reply for RA Social.',
+      `Sender: ${senderEmail}`,
+      `Subject: ${subject}`,
+      `Customer message:\n${body}`,
+      `Detected category: ${analysis.category}`,
+      `Urgency: ${analysis.urgency}`,
+      '',
+      'Rules:',
+      '- Reply only to the customer request.',
+      '- Do not invent refunds, credits, policy decisions, account changes, or completed actions.',
+      '- If information is missing, ask the customer for it.',
+      '- Keep it concise and professional.',
+      '- Do not include a subject line.',
+      '- End with: Best regards,\nRA Social Support Team'
+    ].join('\n');
+    const result = await groqAI.chatWithAI(prompt, '', [], []);
+    if (result?.success && result.response) return String(result.response).trim();
+  } catch (error) {
+    console.error('Mail AI Groq generation failed:', error?.message || error);
+  }
+
   const first = analysis.urgency === 'high'
     ? 'Thank you for reaching out. We understand that this is time-sensitive and will review it as a priority.'
     : 'Thank you for contacting us. We have received your message and reviewed the details.';
