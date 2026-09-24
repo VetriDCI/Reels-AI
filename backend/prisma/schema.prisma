@@ -528,11 +528,10 @@ model CreatorLiveSession {
 
 model MailAIMessage {
   id              String          @id @default(uuid())
-  userId          String?
-  user            User?           @relation("MailAiUser", fields: [userId], references: [id], onDelete: SetNull)
+  userId          String
+  user            User            @relation("MailAiUser", fields: [userId], references: [id], onDelete: Cascade)
   senderEmail     String
   receiverEmail   String
-  externalId      String?         @unique
   subject         String
   body            String
   status          String          @default("pending")
@@ -562,4 +561,23 @@ model MailAIReply {
   createdAt   DateTime      @default(now())
 
   @@index([messageId, createdAt])
+}
+
+
+model SupportTicket {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  email       String
+  category    String   @default("General")
+  subject     String
+  message     String
+  status      String   @default("open")
+  adminReply  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
