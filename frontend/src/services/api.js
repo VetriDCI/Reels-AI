@@ -86,6 +86,11 @@ export const reportAPI = {
   mine: () => api.get('/reports/mine'),
 };
 
+export const supportAPI = {
+  mine: () => api.get('/support/mine'),
+  create: (data) => api.post('/support', data),
+};
+
 export const monetizationAPI = {
   status: () => api.get('/monetization/status'),
   apply: () => api.post('/monetization/apply'),
