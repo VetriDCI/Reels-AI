@@ -1,7 +1,7 @@
 import express from 'express';
 import prisma from '../config/database.js';
 import { protectAdmin } from '../middleware/adminMiddleware.js';
-import { analyzeMail, generateReply } from '../services/mailAiService.js';
+import { analyzeMail, generateReply, shouldAutoReply } from '../services/mailAiService.js';
 import { isGmailConfigured, sendGmail } from '../services/gmailService.js';
 
 const router = express.Router();
@@ -66,18 +66,32 @@ router.post('/messages', async (req, res) => {
     if (!senderEmail || !receiverEmail || !body) return res.status(400).json({ error: 'senderEmail, receiverEmail and body are required' });
 
     const analysis = analyzeMail(subject, body);
-    const shouldReview = analysis.phishingRisk === 'high' || analysis.spamScore >= 0.8;
-    const status = shouldReview ? 'review' : autoReply ? 'replied' : 'pending';
-    const replyBody = autoReply && !shouldReview ? await generateReply({ senderEmail, subject, body, analysis }) : null;
+    const safeAutoReply = autoReply && shouldAutoReply(subject, body, analysis);
+    const shouldReview = analysis.phishingRisk === 'high' || analysis.spamScore >= 0.8 || !safeAutoReply;
+    const replyBody = (safeAutoReply || shouldReview) ? await generateReply({ senderEmail, subject, body, analysis }) : null;
+    let status = shouldReview ? 'review' : 'pending';
+    let delivery = 'not_sent';
+
+    if (safeAutoReply && replyBody && isGmailConfigured()) {
+      await sendGmail({
+        to: senderEmail,
+        subject: subject.toLowerCase().startsWith('re:') ? subject : `Re: ${subject || 'RA Social Support'}`,
+        text: replyBody,
+        replyTo: process.env.GMAIL_USER || 'rasocialofficial@gmail.com'
+      });
+      status = 'replied';
+      delivery = 'sent';
+    }
+
     const message = await prisma.mailAIMessage.create({
       data: {
-        userId: req.userId,
+        userId: req.userId || null,
         senderEmail,
         receiverEmail,
         subject,
         body,
-        status: shouldReview ? 'review' : 'pending',
-        autoReply: Boolean(replyBody),
+        status,
+        autoReply: Boolean(safeAutoReply && delivery === 'sent'),
         replyBody,
         category: analysis.category,
         sentiment: analysis.sentiment,
@@ -85,11 +99,11 @@ router.post('/messages', async (req, res) => {
         spamScore: analysis.spamScore,
         phishingRisk: analysis.phishingRisk,
         summary: analysis.summary,
-        ...(replyBody ? { replies: { create: { body: replyBody, status: 'generated' } } } : {}),
+        ...(replyBody ? { replies: { create: { body: replyBody, status: delivery === 'sent' ? 'sent' : 'generated' } } } : {}),
       },
       include: { replies: { orderBy: { createdAt: 'desc' } } },
     });
-    res.status(201).json(serialize(message));
+    res.status(201).json({ ...serialize(message), delivery });
   } catch (e) { console.error('Mail AI create error:', e); res.status(500).json({ error: 'Could not create Mail AI message' }); }
 });
 

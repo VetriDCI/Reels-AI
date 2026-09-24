@@ -22,6 +22,17 @@ export function analyzeMail(subject = '', body = '') {
   return { summary, sentiment, urgency, category, spamScore, phishingRisk };
 }
 
+
+
+export function shouldAutoReply(subject = '', body = '', analysis = analyzeMail(subject, body)) {
+  const text = clean(`${subject} ${body}`).toLowerCase();
+  if (analysis.phishingRisk === 'high' || analysis.spamScore >= 0.8) return false;
+  if (analysis.urgency !== 'low') return false;
+  if (analysis.category !== 'general') return false;
+  if (text.length > 1200) return false;
+  return /\b(hi|hello|hey|thank you|thanks|how can i contact support|contact support|support contact|basic help|general question|need help)\b/.test(text);
+}
+
 export async function generateReply({ senderEmail, subject, body, analysis }) {
   try {
     const prompt = [
