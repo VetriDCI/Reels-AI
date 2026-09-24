@@ -25,6 +25,8 @@ import AccountDataPage from './settings/AccountDataPage';
 import WatchHistoryPage from './WatchHistoryPage';
 import CreatorDashboardPage from './CreatorDashboardPage';
 import CreatorAdsPage from './CreatorAdsPage';
+import ProfilePostsPage from './settings/ProfilePostsPage';
+import ConnectionsPage from './settings/ConnectionsPage';
 
 const creatorMenuItems = [
   { key: 'analytics', label: 'Creator Analytics', icon: BarChart3, color: 'from-blue-500 to-cyan-400' },
@@ -136,6 +138,9 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
   }
 
   if (view === 'profileOverview') return <ProfileOverviewPage user={user} onBack={back} onUpdated={loadUser} />;
+  if (view === 'posts') return <ProfilePostsPage onBack={back} />;
+  if (view === 'followersList') return <ConnectionsPage type="followers" onBack={back} />;
+  if (view === 'followingList') return <ConnectionsPage type="following" onBack={back} />;
   if (view === 'analytics') return (
     <AnalyticsHubPage
       user={user}
@@ -269,22 +274,6 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
           </div>
         )}
 
-        {hasChannel && (
-          <button onClick={() => goView('creator-dashboard')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-blue-50 border border-blue-100">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center"><BarChart3 className="w-5 h-5 text-white" /></div>
-            <div className="flex-1"><p className="font-bold text-gray-800">Creator Dashboard</p><p className="text-xs text-gray-500">Live content, views, followers, earnings & creator tools</p></div>
-            <ChevronRight className="w-4 h-4 text-gray-300" />
-          </button>
-        )}
-
-        {hasChannel && (
-          <button onClick={() => goView('creator-ads')} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-purple-50 border border-purple-100">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"><Megaphone className="w-5 h-5 text-white" /></div>
-            <div className="flex-1"><p className="font-bold text-gray-800">Creator Ads</p><p className="text-xs text-gray-500">Create, upload, edit and manage ads — shown on Home + Reels</p></div>
-            <ChevronRight className="w-4 h-4 text-gray-300" />
-          </button>
-        )}
-
         <button onClick={() => onOpenDrafts?.()} className="w-full bg-white rounded-2xl shadow-sm p-4 mb-3 flex items-center gap-3 text-left hover:bg-purple-50">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center"><FileText className="w-5 h-5 text-white" /></div>
           <div className="flex-1"><p className="font-bold text-gray-800">Drafts</p><p className="text-xs text-gray-500">Continue posts you saved for later</p></div>
@@ -309,28 +298,74 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
           <ChevronRight className="w-4 h-4 text-gray-300" />
         </button>
 
-        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">{hasChannel ? 'Creator Dashboard' : 'Dashboard Management & Settings'}</p>
+        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">Profile</p>
         <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-100 mb-4">
-          {creatorMenuItems.map(({ key, label, icon: Icon, color }) => {
-            const enabled = hasChannel;
-            return (
-              <button
-                key={key}
-                onClick={() => enabled && goView(key)}
-                disabled={!enabled}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left ${!enabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${color} flex items-center justify-center`}>
-                  <Icon className="w-4 h-4 text-white" />
-                </div>
-                <span className="flex-1 font-medium text-gray-700 text-sm">{label}</span>
-                {enabled ? <ChevronRight className="w-4 h-4 text-gray-300" /> : <LockKeyhole className="w-4 h-4 text-gray-300" />}
-              </button>
-            );
-          })}
+          {[
+            ['profileOverview', 'Profile Overview', User, 'View and edit your profile information'],
+            ['posts', 'Posts', Film, 'View all posts published from your profile'],
+            ['followersList', 'Followers', Users2, 'See people who follow you'],
+            ['followingList', 'Following', Users2, 'See people you follow'],
+          ].map(([key, label, Icon, description]) => (
+            <button key={key} onClick={() => goView(key)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center">
+                <Icon className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-gray-700 text-sm block">{label}</span>
+                <span className="text-[11px] text-gray-400 block mt-0.5">{description}</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </button>
+          ))}
         </div>
 
-        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">Account Settings</p>
+        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">Creator</p>
+        <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-100 mb-4">
+          {[
+            ['creator-dashboard', 'Creator Dashboard', BarChart3, 'Manage creator content, live tools, views and earnings', true],
+            ['creator-ads', 'Creator Ads', Megaphone, 'Create and manage creator advertising campaigns', true],
+            ...creatorMenuItems.map(({ key, label, icon: Icon }) => [key, label, Icon, 'Creator management and monetization workflow', true]),
+          ].map(([key, label, Icon, description, creatorOnly]) => (
+            <button
+              key={key}
+              onClick={() => hasChannel && goView(key)}
+              disabled={!hasChannel && creatorOnly}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left ${!hasChannel ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                <Icon className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-gray-700 text-sm block">{label}</span>
+                <span className="text-[11px] text-gray-400 block mt-0.5">{description}</span>
+              </div>
+              {hasChannel ? <ChevronRight className="w-4 h-4 text-gray-300" /> : <LockKeyhole className="w-4 h-4 text-gray-300" />}
+            </button>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">Content</p>
+        <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-100 mb-4">
+          {[
+            ['drafts', 'Drafts', FileText, 'Continue posts you saved for later', () => onOpenDrafts?.()],
+            ['reports', 'Report History', Flag, 'Track the posts you reported', () => onOpenReportHistory?.()],
+            ['saved', 'Saved', Bookmark, 'Your saved posts and reels', () => goView('saved')],
+            ['watch-history', 'Watch History', Clock3, 'Videos, reels and posts you viewed — last 30 days', () => goView('watch-history')],
+          ].map(([key, label, Icon, description, action]) => (
+            <button key={key} onClick={action} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <Icon className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-gray-700 text-sm block">{label}</span>
+                <span className="text-[11px] text-gray-400 block mt-0.5">{description}</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </button>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-400 uppercase font-semibold mb-2">Account</p>
         <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-100 mb-4">
           {accountMenuItems.map(({ key, label, icon: Icon, color }) => (
             <button key={key} onClick={() => goView(key)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
