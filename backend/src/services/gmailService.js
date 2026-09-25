@@ -10,10 +10,10 @@ const encodeHeader = (value = '') => {
 
 const dotStuff = (value) => String(value || '').replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
 
-function readResponse(socket, timeoutMs = 15000) {
+function readResponse(socket, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     let buffer = '';
-    const timer = setTimeout(() => { cleanup(); reject(new Error('Gmail SMTP response timeout.')); }, timeoutMs);
+    let settled = false;
     const cleanup = () => {
       clearTimeout(timer);
       socket.off('data', onData);
@@ -23,66 +23,53 @@ function readResponse(socket, timeoutMs = 15000) {
     const finish = () => {
       const lines = buffer.split(/\r?\n/).filter(Boolean);
       const last = lines[lines.length - 1] || '';
-      if (/^\d{3} /.test(last)) {
-        cleanup();
-        resolve(lines.join('\n'));
-      }
+      if (!/^\d{3} /.test(last) || settled) return;
+      settled = true;
+      cleanup();
+      resolve({ code: Number(last.slice(0, 3)), text: lines.join('\n') });
     };
-    const onData = (chunk) => { buffer += chunk.toString('utf8'); finish(); };
-    const onError = (err) => { cleanup(); reject(err); };
+    const onData = (chunk) => {
+      buffer += chunk.toString('utf8');
+      finish();
+    };
+    const onError = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
     const onClose = () => {
+      if (settled) return;
       const last = buffer.split(/\r?\n/).filter(Boolean).at(-1) || '';
       if (!/^\d{3} /.test(last)) {
+        settled = true;
         cleanup();
         reject(new Error('Gmail SMTP connection closed unexpectedly.'));
       }
     };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Gmail SMTP response timeout.'));
+    }, timeoutMs);
+
+    // Attach listeners BEFORE the command is written. Gmail can answer very quickly.
     socket.on('data', onData);
     socket.once('error', onError);
     socket.once('close', onClose);
   });
 }
 
-// IMPORTANT: attach the response listener before writing the command.
-// Otherwise a fast Gmail response can arrive before the listener is attached,
-// causing a false timeout and a 500 response from the API.
-function sendCommand(socket, command, expected = null) {
-  return new Promise((resolve, reject) => {
-    let buffer = '';
-    const timer = setTimeout(() => { cleanup(); reject(new Error('Gmail SMTP response timeout.')); }, 15000);
-    const cleanup = () => {
-      clearTimeout(timer);
-      socket.off('data', onData);
-      socket.off('error', onError);
-      socket.off('close', onClose);
-    };
-    const finish = () => {
-      const lines = buffer.split(/\r?\n/).filter(Boolean);
-      const last = lines[lines.length - 1] || '';
-      if (!/^\d{3} /.test(last)) return;
-      cleanup();
-      const code = Number(last.slice(0, 3));
-      const response = lines.join('\n');
-      if (expected && !expected.includes(code)) {
-        reject(new Error(`Gmail SMTP error ${code}: ${response}`));
-        return;
-      }
-      resolve(response);
-    };
-    const onData = (chunk) => { buffer += chunk.toString('utf8'); finish(); };
-    const onError = (err) => { cleanup(); reject(err); };
-    const onClose = () => {
-      const last = buffer.split(/\r?\n/).filter(Boolean).at(-1) || '';
-      if (!/^\d{3} /.test(last)) {
-        cleanup();
-        reject(new Error('Gmail SMTP connection closed unexpectedly.'));
-      }
-    };
-    socket.on('data', onData);
-    socket.once('error', onError);
-    socket.once('close', onClose);
-    socket.write(`${command}\r\n`);
-  });
+async function sendCommand(socket, command, expectedCodes) {
+  // Start listening first so a fast SMTP response cannot be missed.
+  const responsePromise = readResponse(socket);
+  socket.write(`${command}\r\n`);
+  const response = await responsePromise;
+  if (expectedCodes && !expectedCodes.includes(response.code)) {
+    throw new Error(`Gmail SMTP error ${response.code}: ${response.text}`);
+  }
+  return response;
 }
 
 export function isGmailConfigured() {
@@ -92,32 +79,48 @@ export function isGmailConfigured() {
 export async function sendGmail({ to, subject, text, replyTo, inReplyTo }) {
   const user = cleanEnv(process.env.GMAIL_USER) || 'rasocialofficial@gmail.com';
   const password = cleanEnv(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, '');
-  if (!password) throw new Error('Gmail is not configured. Add GMAIL_APP_PASSWORD in Render Environment.');
-  if (!to || !/^\S+@\S+\.\S+$/.test(String(to).trim())) throw new Error('A valid recipient email is required.');
+  const recipient = String(to || '').trim();
 
-  const socket = tls.connect({ host: 'smtp.gmail.com', port: 465, servername: 'smtp.gmail.com', rejectUnauthorized: true });
+  if (!password) throw new Error('Gmail is not configured. Add GMAIL_APP_PASSWORD in Render Environment.');
+  if (!/^\S+@\S+\.\S+$/.test(recipient)) throw new Error('A valid recipient email is required.');
+
+  const socket = tls.connect({
+    host: 'smtp.gmail.com',
+    port: 465,
+    servername: 'smtp.gmail.com',
+    rejectUnauthorized: true,
+    timeout: 20000,
+  });
+
   try {
     await new Promise((resolve, reject) => {
       const onSecure = () => { cleanup(); resolve(); };
       const onError = (error) => { cleanup(); reject(error); };
-      const cleanup = () => { socket.off('secureConnect', onSecure); socket.off('error', onError); };
+      const onTimeout = () => { cleanup(); reject(new Error('Connection to Gmail SMTP timed out.')); };
+      const cleanup = () => {
+        socket.off('secureConnect', onSecure);
+        socket.off('error', onError);
+        socket.off('timeout', onTimeout);
+      };
       socket.once('secureConnect', onSecure);
       socket.once('error', onError);
+      socket.once('timeout', onTimeout);
     });
 
-    // Read the initial 220 greeting before sending EHLO.
-    await readResponse(socket);
+    const greeting = await readResponse(socket);
+    if (greeting.code !== 220) throw new Error(`Gmail SMTP greeting error ${greeting.code}: ${greeting.text}`);
+
     await sendCommand(socket, 'EHLO rasocial.local', [250]);
     await sendCommand(socket, 'AUTH LOGIN', [334]);
-    await sendCommand(socket, Buffer.from(user).toString('base64'), [334]);
-    await sendCommand(socket, Buffer.from(password).toString('base64'), [235]);
+    await sendCommand(socket, Buffer.from(user, 'utf8').toString('base64'), [334]);
+    await sendCommand(socket, Buffer.from(password, 'utf8').toString('base64'), [235]);
     await sendCommand(socket, `MAIL FROM:<${user}>`, [250]);
-    await sendCommand(socket, `RCPT TO:<${String(to).trim()}>`, [250, 251]);
+    await sendCommand(socket, `RCPT TO:<${recipient}>`, [250, 251]);
     await sendCommand(socket, 'DATA', [354]);
 
     const headers = [
       `From: RA Social <${user}>`,
-      `To: ${String(to).trim()}`,
+      `To: ${recipient}`,
       `Subject: ${encodeHeader(subject || 'RA Social Support')}`,
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset=UTF-8',
@@ -125,49 +128,19 @@ export async function sendGmail({ to, subject, text, replyTo, inReplyTo }) {
       `Date: ${new Date().toUTCString()}`,
       replyTo ? `Reply-To: ${replyTo}` : '',
       inReplyTo ? `In-Reply-To: ${inReplyTo}` : '',
-      ''
+      '',
     ].filter(Boolean).join('\r\n');
 
-    // DATA has the same race condition risk as normal SMTP commands, so
-    // attach the response listener before writing the message terminator.
-    await new Promise((resolve, reject) => {
-      let buffer = '';
-      const timer = setTimeout(() => { cleanup(); reject(new Error('Gmail SMTP DATA response timeout.')); }, 15000);
-      const cleanup = () => {
-        clearTimeout(timer);
-        socket.off('data', onData);
-        socket.off('error', onError);
-        socket.off('close', onClose);
-      };
-      const finish = () => {
-        const lines = buffer.split(/\r?\n/).filter(Boolean);
-        const last = lines[lines.length - 1] || '';
-        if (!/^\d{3} /.test(last)) return;
-        cleanup();
-        const code = Number(last.slice(0, 3));
-        if (code !== 250) {
-          reject(new Error(`Gmail SMTP error ${code}: ${lines.join('\n')}`));
-          return;
-        }
-        resolve();
-      };
-      const onData = (chunk) => { buffer += chunk.toString('utf8'); finish(); };
-      const onError = (error) => { cleanup(); reject(error); };
-      const onClose = () => {
-        const last = buffer.split(/\r?\n/).filter(Boolean).at(-1) || '';
-        if (!/^\d{3} /.test(last)) {
-          cleanup();
-          reject(new Error('Gmail SMTP connection closed unexpectedly after DATA.'));
-        }
-      };
-      socket.on('data', onData);
-      socket.once('error', onError);
-      socket.once('close', onClose);
-      socket.write(`${headers}\r\n${dotStuff(text)}\r\n.\r\n`);
-    });
+    // DATA response listener is attached before sending the message terminator.
+    const dataResponse = readResponse(socket);
+    socket.write(`${headers}\r\n${dotStuff(text)}\r\n.\r\n`);
+    const dataResult = await dataResponse;
+    if (dataResult.code !== 250) {
+      throw new Error(`Gmail SMTP DATA error ${dataResult.code}: ${dataResult.text}`);
+    }
 
     await sendCommand(socket, 'QUIT', [221]);
-    return { success: true, from: user, to: String(to).trim() };
+    return { success: true, from: user, to: recipient };
   } finally {
     socket.end();
   }
