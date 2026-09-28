@@ -544,6 +544,7 @@ model MailAIMessage {
   spamScore       Float           @default(0)
   phishingRisk    String          @default("low")
   summary         String?
+  attachments     Json?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   replies         MailAIReply[]
