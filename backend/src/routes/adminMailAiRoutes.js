@@ -19,7 +19,6 @@ router.post('/inbound', async (req, res) => {
     const subject = String(req.body?.subject || 'No subject').trim();
     const body = String(req.body?.body || '').trim();
     const externalId = String(req.body?.externalId || '').trim() || null;
-    const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
     if (!senderEmail || !body) return res.status(400).json({ error: 'senderEmail and body are required' });
     if (externalId) {
       const existing = await prisma.mailAIMessage.findUnique({ where: { externalId } });
@@ -37,7 +36,6 @@ router.post('/inbound', async (req, res) => {
         autoReply: false, replyBody,
         category: analysis.category, sentiment: analysis.sentiment, urgency: analysis.urgency,
         spamScore: analysis.spamScore, phishingRisk: analysis.phishingRisk, summary: analysis.summary,
-        attachments,
         replies: { create: { body: replyBody, status: 'generated' } }
       }, include: { replies: { orderBy: { createdAt: 'desc' } } }
     });
@@ -95,7 +93,6 @@ const serialize = (m) => ({
   spamScore: m.spamScore,
   phishingRisk: m.phishingRisk,
   summary: m.summary,
-  attachments: Array.isArray(m.attachments) ? m.attachments : [],
   createdAt: m.createdAt,
   updatedAt: m.updatedAt,
   replies: m.replies || [],
@@ -121,38 +118,13 @@ router.get('/messages', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     const status = String(req.query.status || '').trim();
-    const requestedPage = Number.parseInt(String(req.query.page || '1'), 10);
-    const requestedLimit = Number.parseInt(String(req.query.limit || '50'), 10);
-    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
     const where = {
       ...(status ? { status } : {}),
       ...(q ? { OR: [{ senderEmail: { contains: q, mode: 'insensitive' } }, { subject: { contains: q, mode: 'insensitive' } }, { body: { contains: q, mode: 'insensitive' } }] } : {}),
     };
-    const [rows, total] = await Promise.all([
-      prisma.mailAIMessage.findMany({ where, include: { replies: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
-      prisma.mailAIMessage.count({ where }),
-    ]);
-    res.json({ items: rows.map(serialize), page, limit, total, hasMore: page * limit < total });
+    const rows = await prisma.mailAIMessage.findMany({ where, include: { replies: { orderBy: { createdAt: 'desc' } } }, orderBy: { createdAt: 'desc' }, take: 100 });
+    res.json(rows.map(serialize));
   } catch (e) { res.status(500).json({ error: 'Could not load Mail AI messages' }); }
-});
-
-router.post('/messages/bulk-review', async (req, res) => {
-  try {
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
-    if (!ids.length) return res.status(400).json({ error: 'At least one mail id is required' });
-    const result = await prisma.mailAIMessage.updateMany({ where: { id: { in: ids } }, data: { status: 'review' } });
-    res.json({ updated: result.count });
-  } catch (e) { res.status(500).json({ error: 'Could not mark selected mails as reviewed' }); }
-});
-
-router.post('/messages/bulk-delete', async (req, res) => {
-  try {
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
-    if (!ids.length) return res.status(400).json({ error: 'At least one mail id is required' });
-    const result = await prisma.mailAIMessage.deleteMany({ where: { id: { in: ids } } });
-    res.json({ deleted: result.count });
-  } catch (e) { res.status(500).json({ error: 'Could not delete selected mails' }); }
 });
 
 router.post('/messages', async (req, res) => {
@@ -162,7 +134,6 @@ router.post('/messages', async (req, res) => {
     const subject = String(req.body?.subject || 'No subject').trim();
     const body = String(req.body?.body || '').trim();
     const autoReply = Boolean(req.body?.autoReply);
-    const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
     if (!senderEmail || !receiverEmail || !body) return res.status(400).json({ error: 'senderEmail, receiverEmail and body are required' });
 
     const analysis = analyzeMail(subject, body);
@@ -185,7 +156,6 @@ router.post('/messages', async (req, res) => {
         spamScore: analysis.spamScore,
         phishingRisk: analysis.phishingRisk,
         summary: analysis.summary,
-        attachments,
         ...(replyBody ? { replies: { create: { body: replyBody, status: 'generated' } } } : {}),
       },
       include: { replies: { orderBy: { createdAt: 'desc' } } },
@@ -220,6 +190,7 @@ router.post('/messages/:id/send', async (req, res) => {
     if (!message) return res.status(404).json({ error: 'Mail not found' });
     const replyBody = String(req.body?.replyBody || message.replyBody || '').trim();
     if (!replyBody) return res.status(400).json({ error: 'Reply body is required' });
+    if (message.status === 'replied') return res.status(409).json({ error: 'This mail has already been sent.' });
     if (!isGmailConfigured()) return res.status(503).json({ error: 'Gmail is not configured. Add GMAIL_USER and GMAIL_APP_PASSWORD in Render Environment.' });
     const delivery = await sendGmail({
       to: message.senderEmail,
@@ -249,12 +220,6 @@ router.patch('/messages/:id', async (req, res) => {
     const updated = await prisma.mailAIMessage.update({ where: { id: req.params.id }, data, include: { replies: { orderBy: { createdAt: 'desc' } } } });
     res.json(serialize(updated));
   } catch (e) { res.status(400).json({ error: 'Could not update mail' }); }
-});
-router.delete('/messages/:id', async (req, res) => {
-  try {
-    await prisma.mailAIMessage.delete({ where: { id: req.params.id } });
-    res.json({ deleted: true, id: req.params.id });
-  } catch (e) { res.status(404).json({ error: 'Mail not found or could not be deleted' }); }
 });
 
 export default router;

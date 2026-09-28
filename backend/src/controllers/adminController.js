@@ -5,11 +5,6 @@ import prisma from '../config/database.js';
 import { createSessionForUser } from './sessionController.js';
 import { sendPasswordResetCode } from '../services/messageService.js';
 
-
-const recordAdminAudit = async (adminId, action, targetType, targetId, details = {}) => {
-  try { await prisma.adminAuditLog.create({ data: { adminId, action, targetType, targetId, details } }); } catch (e) { console.warn('Admin audit log skipped:', e.message); }
-};
-
 // POST /api/auth/admin/login
 export const adminLogin = async (req, res) => {
   try {
@@ -85,7 +80,7 @@ export const getAdminStats = async (req, res) => {
     else { start.setMonth(start.getMonth() - 1); }
     const allowedRange = ['today', 'week', 'month', 'year'].includes(range) ? range : 'month';
     const dateWhere = { createdAt: { gte: start, lte: now } };
-    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, totalViews, pendingReports, pendingPayoutsAgg, pendingCreatorAds, pendingMonetization] = await Promise.all([
+    const [totalUsers, totalPosts, totalReels, activeUsers, earningsAgg, totalViews, pendingReports, pendingPayoutsAgg] = await Promise.all([
       prisma.user.count({ where: dateWhere }),
       prisma.post.count({ where: dateWhere }),
       prisma.post.count({ where: { ...dateWhere, mediaType: 'video' } }),
@@ -94,13 +89,11 @@ export const getAdminStats = async (req, res) => {
       prisma.postView.count({ where: dateWhere }),
       prisma.report.count({ where: { status: 'pending' } }),
       prisma.payout.aggregate({ where: { status: { in: ['pending', 'approved'] } }, _sum: { amount: true } }),
-      prisma.post.count({ where: { isCreatorAd: true, status: 'pending' } }),
-      prisma.user.count({ where: { monetizationStatus: 'pending' } }),
     ]);
     res.json({
       range: allowedRange, from: start.toISOString(), to: now.toISOString(),
       totalUsers, totalPosts, totalReels, pendingPayouts: pendingPayoutsAgg._sum.amount || 0,
-      activeUsers, reportedContent: pendingReports, pendingCreatorAds, pendingMonetization, totalEarnings: earningsAgg._sum.amount || 0, totalViews,
+      activeUsers, reportedContent: pendingReports, totalEarnings: earningsAgg._sum.amount || 0, totalViews,
     });
   } catch (error) {
     console.error('Admin stats error:', error);
@@ -125,41 +118,61 @@ export const adminLogout = async (req, res) => {
   }
 };
 
-// GET /api/admin/users?page=1&limit=20&status=all&sort=joined&search=
+// GET /api/admin/users?limit=5
 export const getAdminUsers = async (req, res) => {
   try {
-    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 20, 1), 100);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 200);
     const status = String(req.query.status || 'all');
     const sort = String(req.query.sort || 'joined');
-    const search = String(req.query.search || '').trim();
-    const where = {
-      ...(status !== 'all' && ['active', 'blocked', 'pending'].includes(status) ? { status } : {}),
-      ...(search ? { OR: [{ username: { contains: search, mode: 'insensitive' } }, { fullName: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] } : {})
-    };
+    const where = status !== 'all' && ['active', 'blocked', 'pending'].includes(status) ? { status } : {};
     const orderBy = sort === 'earnings' ? { earnings: 'desc' } : { createdAt: 'desc' };
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({ where, orderBy, skip: (page - 1) * limit, take: limit, select: { id:true, username:true, fullName:true, email:true, status:true, earnings:true, monetizationStatus:true, createdAt:true } }),
-      prisma.user.count({ where }),
-    ]);
-    res.json({ items: users.map((u) => ({ id:u.id, username:u.username, full_name:u.fullName, email:u.email, status:u.status, earnings:u.earnings, monetization_status:u.monetizationStatus, created_at:u.createdAt })), page, limit, total, totalPages: Math.ceil(total / limit) });
-  } catch (error) { console.error('Admin users error:', error); res.status(500).json({ error: 'Failed to fetch users' }); }
+    const users = await prisma.user.findMany({ where, orderBy, take: limit, select: { id:true, username:true, fullName:true, email:true, status:true, earnings:true, monetizationStatus:true, createdAt:true } });
+    res.json(users.map((u) => ({ id:u.id, username:u.username, full_name:u.fullName, email:u.email, status:u.status, earnings:u.earnings, monetization_status:u.monetizationStatus, created_at:u.createdAt })));
+  } catch (error) {
+    console.error('Admin users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
 };
 
-// GET /api/admin/posts?page=1&limit=20&status=all&type=all&search=
+// GET /api/admin/posts?limit=20&status=pending
 export const getAdminPosts = async (req, res) => {
   try {
-    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 20, 1), 100);
-    const { status, type } = req.query; const search = String(req.query.search || '').trim();
-    const where = { ...(status && status !== 'all' ? { status } : {}), ...(type === 'video' ? { mediaType: 'video' } : {}), ...(search ? { OR: [{ content: { contains: search, mode: 'insensitive' } }, { user: { username: { contains: search, mode: 'insensitive' } } }] } : {}) };
-    const [posts, total] = await Promise.all([
-      prisma.post.findMany({ where, orderBy: { createdAt: 'desc' }, skip:(page-1)*limit, take:limit, include:{ user:{select:{id:true,username:true,fullName:true}}, likes:{select:{id:true}}, comments:{select:{id:true}} } }),
-      prisma.post.count({ where }),
-    ]);
-    const mapped = posts.map((p) => ({ id:p.id, content:p.content, media_url:p.mediaUrl, media_type:p.mediaType, author:p.user?.fullName||p.user?.username||'Unknown', likes_count:p.likes.length, comments_count:p.comments.length, views:p.viewCount||0, status:p.status, created_at:p.createdAt }));
-    res.json({ items:mapped, page, limit, total, totalPages:Math.ceil(total/limit) });
-  } catch (error) { console.error('Admin posts error:', error); res.status(500).json({ error:'Failed to fetch posts' }); }
+    const limit = parseInt(req.query.limit) || 20;
+    const { status, type } = req.query;
+    const where = {
+      ...(status && status !== 'all' ? { status } : {}),
+      ...(type === 'video' ? { mediaType: 'video' } : {}),
+    };
+
+    const posts = await prisma.post.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        user: { select: { id: true, username: true, fullName: true } },
+        likes: { select: { id: true } },
+        comments: { select: { id: true } },
+      },
+    });
+
+    const mapped = posts.map((p) => ({
+      id: p.id,
+      content: p.content,
+      media_url: p.mediaUrl,
+      media_type: p.mediaType,
+      author: p.user?.fullName || p.user?.username || 'Unknown',
+      likes_count: p.likes.length,
+      comments_count: p.comments.length,
+      views: p.viewCount || 0,
+      status: p.status,
+      created_at: p.createdAt,
+    }));
+
+    res.json(mapped);
+  } catch (error) {
+    console.error('Admin posts error:', error);
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
 };
 
 // PATCH /api/admin/posts/:id/status
@@ -178,7 +191,6 @@ export const updatePostStatus = async (req, res) => {
       select: { id: true, status: true },
     });
 
-    await recordAdminAudit(req.userId, 'post_status_updated', 'post', post.id, { status });
     res.json(post);
   } catch (error) {
     console.error('Update post status error:', error);
@@ -191,7 +203,6 @@ export const deleteAdminPost = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.post.delete({ where: { id } });
-    await recordAdminAudit(req.userId, 'post_deleted', 'post', id);
     res.json({ message: 'Post deleted' });
   } catch (error) {
     console.error('Admin delete post error:', error);
@@ -245,7 +256,6 @@ export const updateUserStatus = async (req, res) => {
       select: { id: true, username: true, status: true },
     });
 
-    await recordAdminAudit(req.userId, 'user_status_updated', 'user', user.id, { status });
     res.json(user);
   } catch (error) {
     console.error('Update user status error:', error);
@@ -254,14 +264,32 @@ export const updateUserStatus = async (req, res) => {
 };
 
 
-// GET /api/admin/monetization?page=1&limit=25&search=
+// GET /api/admin/monetization
 export const getMonetizationApplications = async (req, res) => {
   try {
-    const page=Math.max(Number.parseInt(req.query.page,10)||1,1); const limit=Math.min(Math.max(Number.parseInt(req.query.limit,10)||25,1),100); const search=String(req.query.search||'').trim();
-    const where={monetizationStatus:'pending',...(search?{OR:[{username:{contains:search,mode:'insensitive'}},{fullName:{contains:search,mode:'insensitive'}},{email:{contains:search,mode:'insensitive'}}]}:{})};
-    const [users,total]=await Promise.all([prisma.user.findMany({where,orderBy:{monetizationAppliedAt:'asc'},skip:(page-1)*limit,take:limit,select:{id:true,username:true,fullName:true,email:true,monetizationStatus:true,monetizationAppliedAt:true,_count:{select:{followers:true,posts:true}}}}),prisma.user.count({where})]);
-    res.json({items:users.map(u=>({id:u.id,username:u.username,full_name:u.fullName,email:u.email,status:u.monetizationStatus,applied_at:u.monetizationAppliedAt,followers:u._count.followers,posts:u._count.posts})),page,limit,total,totalPages:Math.ceil(total/limit)});
-  } catch(error){console.error('Admin monetization applications error:',error);res.status(500).json({error:'Failed to fetch monetization applications'});}
+    const users = await prisma.user.findMany({
+      where: { monetizationStatus: 'pending' },
+      orderBy: { monetizationAppliedAt: 'asc' },
+      select: {
+        id: true, username: true, fullName: true, email: true,
+        monetizationStatus: true, monetizationAppliedAt: true,
+        _count: { select: { followers: true, posts: true } },
+      },
+    });
+    res.json(users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      full_name: u.fullName,
+      email: u.email,
+      status: u.monetizationStatus,
+      applied_at: u.monetizationAppliedAt,
+      followers: u._count.followers,
+      posts: u._count.posts,
+    })));
+  } catch (error) {
+    console.error('Admin monetization applications error:', error);
+    res.status(500).json({ error: 'Failed to fetch monetization applications' });
+  }
 };
 
 // PATCH /api/admin/monetization/:id
@@ -298,7 +326,6 @@ export const updateMonetizationApplication = async (req, res) => {
       return updated;
     });
 
-    await recordAdminAudit(req.userId, 'monetization_updated', 'user', user.id, { status });
     res.json(user);
   } catch (error) {
     console.error('Update monetization application error:', error);
@@ -309,11 +336,14 @@ export const updateMonetizationApplication = async (req, res) => {
 
 export const getAdminReports = async (req, res) => {
   try {
-    const page=Math.max(Number.parseInt(req.query.page,10)||1,1); const limit=Math.min(Math.max(Number.parseInt(req.query.limit,10)||25,1),100); const status=String(req.query.status||'all');
-    const where=status!=='all'&&['pending','reviewed','resolved','dismissed'].includes(status)?{status}:{};
-    const [reports,total]=await Promise.all([prisma.report.findMany({where,orderBy:{createdAt:'desc'},skip:(page-1)*limit,take:limit,include:{reporter:{select:{id:true,username:true,fullName:true}},post:{select:{id:true,content:true,mediaUrl:true,mediaType:true,status:true}}}}),prisma.report.count({where})]);
-    res.json({items:reports,page,limit,total,totalPages:Math.ceil(total/limit)});
-  } catch(error){console.error('Admin reports error:',error);res.status(500).json({error:'Failed to fetch reports'});}
+    const status = String(req.query.status || 'all');
+    const reports = await prisma.report.findMany({
+      where: status !== 'all' && ['pending','reviewed','resolved','dismissed'].includes(status) ? { status } : {},
+      orderBy: { createdAt: 'desc' }, take: 100,
+      include: { reporter: { select: { id:true, username:true, fullName:true } }, post: { select: { id:true, content:true, mediaUrl:true, mediaType:true, status:true } } }
+    });
+    res.json(reports);
+  } catch (error) { console.error('Admin reports error:', error); res.status(500).json({ error:'Failed to fetch reports' }); }
 };
 
 export const updateReportStatus = async (req, res) => {
@@ -321,7 +351,6 @@ export const updateReportStatus = async (req, res) => {
     const status = String(req.body?.status || '');
     if (!['pending','reviewed','resolved','dismissed'].includes(status)) return res.status(400).json({ error:'Invalid report status' });
     const report = await prisma.report.update({ where:{ id:req.params.id }, data:{ status } });
-    await recordAdminAudit(req.userId, 'report_status_updated', 'report', report.id, { status });
     res.json(report);
   } catch (error) { console.error('Update report error:', error); res.status(500).json({ error:'Failed to update report' }); }
 };
@@ -490,9 +519,17 @@ export const deleteAdminVibe = async (req, res) => {
 };
 
 
-// GET /api/admin/creator-ads?page=1&limit=25&status=all&search=
+// GET /api/admin/creator-ads
 export const getCreatorAds = async (req, res) => {
-  try { const page=Math.max(Number.parseInt(req.query.page,10)||1,1); const limit=Math.min(Math.max(Number.parseInt(req.query.limit,10)||25,1),100); const status=String(req.query.status||'all'); const search=String(req.query.search||'').trim(); const where={isCreatorAd:true,...(['pending','approved','rejected'].includes(status)?{status}:{}),...(search?{OR:[{content:{contains:search,mode:'insensitive'}},{user:{username:{contains:search,mode:'insensitive'}}}]}:{})}; const [ads,total]=await Promise.all([prisma.post.findMany({where,orderBy:{createdAt:'desc'},skip:(page-1)*limit,take:limit,include:{user:{select:{id:true,username:true,fullName:true,email:true,channelName:true,channelNumber:true}},likes:{select:{id:true}},comments:{select:{id:true}}}}),prisma.post.count({where})]); res.json({items:ads.map(a=>({id:a.id,user_id:a.userId,username:a.user.username,full_name:a.user.fullName,email:a.user.email,channel_name:a.user.channelName,channel_number:a.user.channelNumber,content:a.content,media_url:a.mediaUrl,media_type:a.mediaType,status:a.status,likes:a.likes.length,comments:a.comments.length,created_at:a.createdAt,updated_at:a.updatedAt})),page,limit,total,totalPages:Math.ceil(total/limit)}); } catch(error){console.error('Admin creator ads error:',error);res.status(500).json({error:'Failed to fetch Creator Ads'});}
+  try {
+    const status = String(req.query.status || 'all');
+    const where = { isCreatorAd: true, ...( ['pending','approved','rejected'].includes(status) ? { status } : {} ) };
+    const ads = await prisma.post.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 300,
+      include: { user: { select: { id: true, username: true, fullName: true, email: true, channelName: true, channelNumber: true } }, likes: { select: { id: true } }, comments: { select: { id: true } } },
+    });
+    res.json(ads.map(a => ({ id:a.id, user_id:a.userId, username:a.user.username, full_name:a.user.fullName, email:a.user.email, channel_name:a.user.channelName, channel_number:a.user.channelNumber, content:a.content, media_url:a.mediaUrl, media_type:a.mediaType, status:a.status, likes:a.likes.length, comments:a.comments.length, created_at:a.createdAt, updated_at:a.updatedAt })));
+  } catch (error) { console.error('Admin creator ads error:', error); res.status(500).json({ error: 'Failed to fetch Creator Ads' }); }
 };
 
 // PATCH /api/admin/creator-ads/:id/status
@@ -522,9 +559,21 @@ export const updateCreatorAdStatus = async (req, res) => {
 
 // GET /api/admin/payouts
 export const getAdminPayouts = async (req, res) => {
-  try { const page=Math.max(Number.parseInt(req.query.page,10)||1,1); const limit=Math.min(Math.max(Number.parseInt(req.query.limit,10)||25,1),100); const status=String(req.query.status||'all'); const search=String(req.query.search||'').trim(); const where={...(status!=='all'&&['pending','approved','paid','rejected'].includes(status)?{status}:{}),...(search?{user:{OR:[{username:{contains:search,mode:'insensitive'}},{email:{contains:search,mode:'insensitive'}},{fullName:{contains:search,mode:'insensitive'}}]}}:{})}; const [payouts,total]=await Promise.all([prisma.payout.findMany({where,orderBy:{createdAt:'desc'},skip:(page-1)*limit,take:limit,include:{user:{select:{id:true,username:true,fullName:true,email:true}}}}),prisma.payout.count({where})]); res.json({items:payouts.map(p=>({id:p.id,user_id:p.userId,username:p.user?.username,full_name:p.user?.fullName,email:p.user?.email,amount:p.amount,currency:p.currency,method:p.method,account_label:p.accountLabel,status:p.status,admin_note:p.adminNote,requested_at:p.requestedAt,processed_at:p.processedAt,paid_at:p.paidAt,created_at:p.createdAt,updated_at:p.updatedAt})),page,limit,total,totalPages:Math.ceil(total/limit)}); } catch(error){console.error('Admin payouts error:',error);res.status(500).json({error:'Failed to fetch payouts'});}
+  try {
+    const status = String(req.query.status || 'all');
+    const where = ['pending', 'approved', 'paid', 'rejected'].includes(status) ? { status } : {};
+    const payouts = await prisma.payout.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 200,
+      include: { user: { select: { id: true, username: true, fullName: true, email: true } } },
+    });
+    res.json(payouts.map((p) => ({ id:p.id, user_id:p.userId, username:p.user.username, full_name:p.user.fullName, email:p.user.email, amount:p.amount, currency:p.currency, method:p.method, account_label:p.accountLabel, status:p.status, admin_note:p.adminNote, requested_at:p.requestedAt, processed_at:p.processedAt, paid_at:p.paidAt })));
+  } catch (error) {
+    console.error('Admin payouts error:', error);
+    res.status(500).json({ error: 'Failed to fetch payouts' });
+  }
 };
 
+// PATCH /api/admin/payouts/:id/status
 export const updatePayoutStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -588,78 +637,4 @@ export const creditCreatorEarning = async (req, res) => {
     console.error('Credit creator earning error:', error);
     res.status(error.statusCode || 500).json({ error: error.message || 'Failed to record creator earning' });
   }
-};
-
-// Admin-only operational tools added without changing existing admin flows.
-export const getAdminAuditLogs = async (req, res) => {
-  try {
-    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 25, 1), 100);
-    const action = String(req.query.action || '').trim();
-    const where = action ? { action: { contains: action, mode: 'insensitive' } } : {};
-    const [items, total] = await Promise.all([
-      prisma.adminAuditLog.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
-      prisma.adminAuditLog.count({ where }),
-    ]);
-    res.json({ items, page, limit, total, totalPages: Math.ceil(total / limit) });
-  } catch (error) { console.error('Admin audit logs error:', error); res.status(500).json({ error: 'Failed to fetch audit logs' }); }
-};
-
-export const getSupportTickets = async (req, res) => {
-  try {
-    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 25, 1), 100);
-    const status = String(req.query.status || 'all');
-    const search = String(req.query.search || '').trim();
-    const where = {
-      ...(status !== 'all' && ['open','pending','resolved','closed'].includes(status) ? { status } : {}),
-      ...(search ? { OR: [{ subject: { contains: search, mode: 'insensitive' } }, { message: { contains: search, mode: 'insensitive' } }] } : {})
-    };
-    const [items, total] = await Promise.all([
-      prisma.supportTicket.findMany({ where, orderBy: { updatedAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
-      prisma.supportTicket.count({ where }),
-    ]);
-    res.json({ items, page, limit, total, totalPages: Math.ceil(total / limit) });
-  } catch (error) { console.error('Support tickets error:', error); res.status(500).json({ error: 'Failed to fetch support tickets' }); }
-};
-
-export const updateSupportTicket = async (req, res) => {
-  try {
-    const status = String(req.body?.status || '').trim();
-    const adminReply = req.body?.adminReply == null ? undefined : String(req.body.adminReply).trim().slice(0, 5000);
-    if (!['open','pending','resolved','closed'].includes(status)) return res.status(400).json({ error: 'Invalid ticket status' });
-    const data = { status, ...(adminReply !== undefined ? { adminReply, repliedAt: adminReply ? new Date() : null } : {}) };
-    const ticket = await prisma.supportTicket.update({ where: { id: req.params.id }, data });
-    await prisma.adminAuditLog.create({ data: { adminId: req.userId, action: 'support_ticket_updated', targetType: 'support_ticket', targetId: ticket.id, details: { status } } });
-    res.json(ticket);
-  } catch (error) { console.error('Update support ticket error:', error); res.status(500).json({ error: 'Failed to update support ticket' }); }
-};
-
-export const getCreatorManagement = async (req, res) => {
-  try {
-    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 25, 1), 100);
-    const search = String(req.query.search || '').trim();
-    const where = { role: 'user', ...(search ? { OR: [{ username: { contains: search, mode: 'insensitive' } }, { fullName: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] } : {}) };
-    const [items, total] = await Promise.all([
-      prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit, select: { id:true, username:true, fullName:true, email:true, status:true, channelName:true, channelNumber:true, monetizationStatus:true, earnings:true, createdAt:true, _count:{select:{posts:true, followers:true}} } }),
-      prisma.user.count({ where }),
-    ]);
-    res.json({ items, page, limit, total, totalPages: Math.ceil(total / limit) });
-  } catch (error) { console.error('Creator management error:', error); res.status(500).json({ error: 'Failed to fetch creators' }); }
-};
-
-export const getAdminSessions = async (req, res) => {
-  try {
-    const sessions = await prisma.session.findMany({ where: { userId: req.userId, revokedAt: null }, orderBy: { lastSeenAt: 'desc' }, select: { id:true, deviceName:true, userAgent:true, ipAddress:true, createdAt:true, lastSeenAt:true, expiresAt:true } });
-    res.json(sessions);
-  } catch (error) { console.error('Admin sessions error:', error); res.status(500).json({ error: 'Failed to fetch sessions' }); }
-};
-
-export const revokeAdminSession = async (req, res) => {
-  try {
-    const updated = await prisma.session.updateMany({ where: { id:req.params.id, userId:req.userId, revokedAt:null }, data:{ revokedAt:new Date() } });
-    if (!updated.count) return res.status(404).json({ error:'Session not found' });
-    res.json({ success:true });
-  } catch (error) { console.error('Revoke admin session error:', error); res.status(500).json({ error:'Failed to revoke session' }); }
 };

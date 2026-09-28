@@ -544,7 +544,6 @@ model MailAIMessage {
   spamScore       Float           @default(0)
   phishingRisk    String          @default("low")
   summary         String?
-  attachments     Json?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   replies         MailAIReply[]
@@ -563,32 +562,4 @@ model MailAIReply {
   createdAt   DateTime      @default(now())
 
   @@index([messageId, createdAt])
-}
-
-model AdminAuditLog {
-  id          String   @id @default(uuid())
-  adminId     String
-  action      String
-  targetType  String?
-  targetId    String?
-  details     Json?
-  createdAt   DateTime @default(now())
-  @@index([createdAt])
-  @@index([action, createdAt])
-  @@index([targetType, targetId])
-}
-
-model SupportTicket {
-  id          String   @id @default(uuid())
-  userId      String?
-  subject     String
-  message     String
-  status      String   @default("open")
-  priority    String   @default("normal")
-  adminReply  String?
-  repliedAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  @@index([status, createdAt])
-  @@index([userId, createdAt])
 }
