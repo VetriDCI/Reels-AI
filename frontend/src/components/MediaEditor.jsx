@@ -139,7 +139,7 @@ function MediaEditor({ file, mediaType, onApply, onClose }) {
   const exportVideo = async () => {
     const video = videoRef.current;
     if (!video) throw new Error('Video is not ready.');
-    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || typeof video.captureStream !== 'function') throw new Error('This browser cannot export edited videos. Try Chrome on Android or another modern browser.');
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || typeof video.captureStream !== 'function') throw new Error('This browser can’t edit this video. Please try another browser.');
     const total = duration || video.duration || 0; if (!total) throw new Error('Video duration is not ready yet.');
     const from = clamp(Number(start)||0,0,Math.max(0,total-.05)); const to = clamp(Number(end)||total,from+.05,total);
     const bw = video.videoWidth||1280, bh=video.videoHeight||720, crop=getCrop(bw,bh), rotated=rotation%180!==0;

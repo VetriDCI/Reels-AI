@@ -103,7 +103,7 @@ export default function MePage({ onLogout, onBack, onOpenDrafts, onOpenReportHis
     event.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) { alert('Please select an image file'); return; }
-    if (file.size > 10 * 1024 * 1024) { alert('Profile image must be under 10 MB'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('This image can’t be uploaded. Please choose another image.'); return; }
     setUploadingAvatar(true);
     try {
       const upload = await uploadAPI.media(file);

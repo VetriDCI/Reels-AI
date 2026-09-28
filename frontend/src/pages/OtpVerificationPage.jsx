@@ -57,7 +57,7 @@ export default function OtpVerificationPage() {
         </div>
 
         <h1 className="text-2xl font-bold mb-1">Enter OTP</h1>
-        <p className="text-gray-500 text-sm mb-6">We sent a 6-digit one-time code{devOtp ? ` (development: ${devOtp})` : ''}</p>
+        <p className="text-gray-500 text-sm mb-6">We sent a 6-digit one-time code</p>
 
         {error && <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>}
 

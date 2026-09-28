@@ -43,7 +43,7 @@ export default function CreatorAdsPage({ user, onBack }) {
     e.target.value = '';
     if (!selected.length) return;
     const valid = selected.filter(next => ACCEPTED.some(prefix => next.type?.startsWith(prefix)) && next.size <= MAX);
-    if (valid.length !== selected.length) return alert('Only image/video files under 50 MB are supported.');
+    if (valid.length !== selected.length) return alert('This file can’t be uploaded. Please choose another file.');
     if (preview && !editing?.mediaUrl) URL.revokeObjectURL(preview);
     setFiles(valid);
     setFile(valid[0]);
@@ -126,7 +126,7 @@ export default function CreatorAdsPage({ user, onBack }) {
         {(preview || file) ? <div className="mt-3 rounded-xl overflow-hidden bg-black relative">
           {(file?.type?.startsWith('video/') || editing?.mediaType === 'video') ? <video src={preview} controls className="w-full max-h-80 object-contain" /> : <img src={preview} alt="Ad preview" className="w-full max-h-80 object-contain" />}
           <button onClick={() => { setFile(null); if (preview && preview !== editing?.mediaUrl) URL.revokeObjectURL(preview); setPreview(''); setUploadName(''); setDirty(true); }} className="absolute top-2 right-2 bg-black/70 text-white p-2 rounded-full"><X className="w-4 h-4" /></button>
-        </div> : <button onClick={() => inputRef.current?.click()} className="mt-3 w-full border-2 border-dashed border-purple-200 bg-purple-50 rounded-xl py-8 flex flex-col items-center gap-2 text-purple-700"><Upload className="w-8 h-8" /><b>Upload photo or video</b><span className="text-xs text-purple-500">Select one or multiple photos/videos · Maximum 50 MB each</span></button>}
+        </div> : <button onClick={() => inputRef.current?.click()} className="mt-3 w-full border-2 border-dashed border-purple-200 bg-purple-50 rounded-xl py-8 flex flex-col items-center gap-2 text-purple-700"><Upload className="w-8 h-8" /><b>Upload photo or video</b><span className="text-xs text-purple-500">Select one or multiple photos/videos</span></button>}
         <input ref={inputRef} type="file" accept="image/*,video/*" multiple={!editing?.id} onChange={chooseFile} className="hidden" />
         <div className="mt-2 flex items-center justify-between text-xs text-gray-400"><span>{content.length}/{MAX_TEXT}</span>{uploadName && <span className="truncate max-w-[65%]">{uploadName}</span>}</div>
         <div className="mt-4 flex gap-2"><button onClick={() => inputRef.current?.click()} className="flex-1 py-3 rounded-xl border font-semibold flex items-center justify-center gap-2"><Upload className="w-4 h-4" /> {preview ? 'Replace media' : 'Add media'}</button><button onClick={save} disabled={saving} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" /> {saving ? 'Saving...' : editing?.id ? 'Save Changes' : 'Publish Ad'}</button></div>

@@ -608,8 +608,7 @@ function AIFeatures({ searchQuery = '' }) {
                 <label className="flex items-center gap-2"><input type="checkbox" checked={autoSaveChats} onChange={(e) => setAutoSaveChats(e.target.checked)} /> Auto-save chats</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={compactMode} onChange={(e) => setCompactMode(e.target.checked)} /> Compact mode</label>
                 {usage && <span className="text-gray-500">{usage.conversations || 0} chats • {usage.messages || 0} messages</span>}
-                {capabilities && <span className="text-green-600">AI backend ready • {capabilities.provider || 'Groq'}</span>}
-                {capabilities?.media?.configured === false && <span className="text-amber-600">Image/video generation key not configured</span>}
+                
               </div>
             </div>
           )}

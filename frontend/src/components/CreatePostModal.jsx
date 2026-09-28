@@ -71,7 +71,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     const expectedPrefix = kind === 'video' ? 'video/' : 'image/';
     const valid = selected.filter(f => f.size <= limit && f.type.startsWith(expectedPrefix));
     if (valid.length !== selected.length) {
-      alert(`Only ${kind === 'video' ? 'video' : 'image'} files under 50 MB are allowed.`);
+      alert('This file can’t be uploaded. Please choose another file.');
     }
     if (!valid.length) return;
     const appending = appendSelectionRef.current;
@@ -185,7 +185,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
       onClose();
     } catch (error) {
       console.error('Failed to create post:', error);
-      alert(error.response?.data?.message || 'Failed to create post. Check your backend and Cloudinary settings.');
+      alert('Couldn’t publish your post. Please try again.');
       setUploadStage(null);
     }
   };
@@ -239,7 +239,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
                 </div>
               </div>
               <div className="p-3 flex items-center justify-between">
-                <div className="min-w-0"><p className="text-sm font-semibold truncate">{files.length > 1 ? `${files.length} media files selected` : file?.name}</p><p className="text-xs text-gray-500">{files.length > 1 ? `Each ${mediaKind === 'video' ? 'video' : 'photo'} will be posted separately.` : `${mediaKind === 'video' ? 'Video' : 'Image'} · ${(file?.size / 1024 / 1024).toFixed(1)} MB`}</p></div>
+                <div className="min-w-0"><p className="text-sm font-semibold truncate">{files.length > 1 ? `${files.length} media files selected` : file?.name}</p><p className="text-xs text-gray-500">{files.length > 1 ? `Each ${mediaKind === 'video' ? 'video' : 'photo'} will be posted separately.` : 'Media selected'}</p></div>
                 <button type="button" onClick={() => (mediaKind === 'video' ? pickVideo(true) : pickPhoto(true))} className="flex items-center gap-1 px-3 py-2 rounded-full bg-gray-100 text-sm font-medium"><RefreshCw className="w-4 h-4" />Add more {mediaKind === 'video' ? 'videos' : 'photos'}</button>
               </div>
               {files.length > 1 && <div className="px-3 pb-3 flex gap-2 overflow-x-auto">{files.map((item, index) => <button type="button" onClick={() => selectMedia(index)} key={`${item.name}-${index}`} className={`relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 bg-black ${activeIndex === index ? 'border-purple-600 ring-2 ring-purple-200' : 'border-gray-200'}`}>{item.type.startsWith('video/') ? <div className="w-full h-full flex items-center justify-center text-white"><Video className="w-6 h-6" /></div> : <img src={URL.createObjectURL(item)} alt="" className="w-full h-full object-cover" />}{index === activeIndex && <span className="absolute bottom-0 left-0 right-0 text-[9px] bg-purple-600 text-white">Editing</span>}</button>)}</div>}
@@ -251,7 +251,7 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
           {livePreview && (
             <div className="border-2 border-red-200 rounded-xl p-4 bg-red-50">
               <div className="flex items-center justify-between gap-3">
-                <div><p className="font-bold text-red-600">● LIVE CAMERA</p><p className="text-xs text-gray-500">Camera preview only. A real public multi-user livestream requires a streaming service/server.</p></div>
+                <div><p className="font-bold text-red-600">● LIVE CAMERA</p><p className="text-xs text-gray-500">Camera preview is ready. Public live streaming is coming soon.</p></div>
                 <div className="flex gap-2">
                   <button onClick={() => { if (videoRef.current) { if (videoRef.current.paused) { videoRef.current.play(); setLiveState('live'); } else { videoRef.current.pause(); setLiveState('paused'); } } }} className="flex items-center gap-2 px-3 py-2 bg-white border rounded-full text-sm font-semibold">{liveState === 'live' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}{liveState === 'live' ? 'Pause' : 'Resume'}</button>
                   <button onClick={stopCamera} className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-full"><X className="w-4 h-4" />Stop</button>
