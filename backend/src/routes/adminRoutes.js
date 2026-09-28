@@ -2,6 +2,7 @@ import express from 'express';
 import { getAds, createAd, updateAd, deleteAd } from '../controllers/adminAdsController.js';
 import { getAdminStats, adminLogout, getAdminUsers, updateUserStatus, getAdminPosts, deleteAdminPost, updatePostStatus, changeAdminPassword, getMonetizationApplications, updateMonetizationApplication, getAdminReports, updateReportStatus, getBroadcasts, getBroadcastReach, createBroadcast, getAdminVibes, updateVibeStatus, deleteAdminVibe, getAdminPayouts, updatePayoutStatus, creditCreatorEarning, getCreatorAds, updateCreatorAdStatus } from '../controllers/adminController.js';
 import { protectAdmin } from '../middleware/adminMiddleware.js';
+import { getAdminAuditLogs, getSupportTickets, updateSupportTicket, getCreatorManagement, getAdminSessions, revokeAdminSession } from '../controllers/adminController.js';
 
 const router = express.Router();
 
@@ -29,6 +30,12 @@ router.get('/creator-ads', protectAdmin, getCreatorAds);
 router.patch('/creator-ads/:id/status', protectAdmin, updateCreatorAdStatus);
 router.post('/earnings/:userId', protectAdmin, creditCreatorEarning);
 router.patch('/payouts/:id/status', protectAdmin, updatePayoutStatus);
+router.get('/audit-logs', protectAdmin, getAdminAuditLogs);
+router.get('/support-tickets', protectAdmin, getSupportTickets);
+router.patch('/support-tickets/:id', protectAdmin, updateSupportTicket);
+router.get('/creators', protectAdmin, getCreatorManagement);
+router.get('/security/sessions', protectAdmin, getAdminSessions);
+router.delete('/security/sessions/:id', protectAdmin, revokeAdminSession);
 router.get('/vibes', protectAdmin, getAdminVibes);
 router.patch('/vibes/:id/status', protectAdmin, updateVibeStatus);
 router.delete('/vibes/:id', protectAdmin, deleteAdminVibe);
