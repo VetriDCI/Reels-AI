@@ -118,12 +118,18 @@ router.get('/messages', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     const status = String(req.query.status || '').trim();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
+    const skip = (page - 1) * limit;
     const where = {
       ...(status ? { status } : {}),
       ...(q ? { OR: [{ senderEmail: { contains: q, mode: 'insensitive' } }, { subject: { contains: q, mode: 'insensitive' } }, { body: { contains: q, mode: 'insensitive' } }] } : {}),
     };
-    const rows = await prisma.mailAIMessage.findMany({ where, include: { replies: { orderBy: { createdAt: 'desc' } } }, orderBy: { createdAt: 'desc' }, take: 100 });
-    res.json(rows.map(serialize));
+    const [rows, total] = await Promise.all([
+      prisma.mailAIMessage.findMany({ where, include: { replies: { orderBy: { createdAt: 'desc' } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.mailAIMessage.count({ where }),
+    ]);
+    res.json({ messages: rows.map(serialize), total, page, limit, hasMore: skip + rows.length < total });
   } catch (e) { res.status(500).json({ error: 'Could not load Mail AI messages' }); }
 });
 
@@ -220,6 +226,16 @@ router.patch('/messages/:id', async (req, res) => {
     const updated = await prisma.mailAIMessage.update({ where: { id: req.params.id }, data, include: { replies: { orderBy: { createdAt: 'desc' } } } });
     res.json(serialize(updated));
   } catch (e) { res.status(400).json({ error: 'Could not update mail' }); }
+});
+
+router.delete('/messages/:id', async (req, res) => {
+  try {
+    const message = await prisma.mailAIMessage.findUnique({ where: { id: req.params.id } });
+    if (!message) return res.status(404).json({ error: 'Mail not found' });
+    await prisma.mailAIReply.deleteMany({ where: { messageId: req.params.id } });
+    await prisma.mailAIMessage.delete({ where: { id: req.params.id } });
+    res.json({ success: true, id: req.params.id });
+  } catch (e) { res.status(400).json({ error: 'Could not delete mail' }); }
 });
 
 export default router;

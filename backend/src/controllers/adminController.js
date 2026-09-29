@@ -122,11 +122,19 @@ export const adminLogout = async (req, res) => {
 export const getAdminUsers = async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 200);
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const skip = (page - 1) * limit;
     const status = String(req.query.status || 'all');
     const sort = String(req.query.sort || 'joined');
-    const where = status !== 'all' && ['active', 'blocked', 'pending'].includes(status) ? { status } : {};
+    const q = String(req.query.q || '').trim();
+    const where = {
+      ...(status !== 'all' && ['active', 'blocked', 'pending'].includes(status) ? { status } : {}),
+      ...(q ? { OR: [{ username: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { fullName: { contains: q, mode: 'insensitive' } }] } : {}),
+    };
     const orderBy = sort === 'earnings' ? { earnings: 'desc' } : { createdAt: 'desc' };
-    const users = await prisma.user.findMany({ where, orderBy, take: limit, select: { id:true, username:true, fullName:true, email:true, status:true, earnings:true, monetizationStatus:true, createdAt:true } });
+    // Response stays a plain array (unchanged) so existing callers (e.g. Dashboard) keep working.
+    // Pagination is opt-in: pass ?page=2 to fetch the next batch.
+    const users = await prisma.user.findMany({ where, orderBy, skip, take: limit, select: { id:true, username:true, fullName:true, email:true, status:true, earnings:true, monetizationStatus:true, createdAt:true } });
     res.json(users.map((u) => ({ id:u.id, username:u.username, full_name:u.fullName, email:u.email, status:u.status, earnings:u.earnings, monetization_status:u.monetizationStatus, created_at:u.createdAt })));
   } catch (error) {
     console.error('Admin users error:', error);
@@ -340,7 +348,7 @@ export const getAdminReports = async (req, res) => {
     const reports = await prisma.report.findMany({
       where: status !== 'all' && ['pending','reviewed','resolved','dismissed'].includes(status) ? { status } : {},
       orderBy: { createdAt: 'desc' }, take: 100,
-      include: { reporter: { select: { id:true, username:true, fullName:true } }, post: { select: { id:true, content:true, mediaUrl:true, mediaType:true, status:true } } }
+      include: { reporter: { select: { id:true, username:true, fullName:true } }, post: { select: { id:true, content:true, mediaUrl:true, mediaType:true, status:true, user: { select: { id:true, username:true, status:true } } } } }
     });
     res.json(reports);
   } catch (error) { console.error('Admin reports error:', error); res.status(500).json({ error:'Failed to fetch reports' }); }

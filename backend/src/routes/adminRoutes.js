@@ -2,10 +2,12 @@ import express from 'express';
 import { getAds, createAd, updateAd, deleteAd } from '../controllers/adminAdsController.js';
 import { getAdminStats, adminLogout, getAdminUsers, updateUserStatus, getAdminPosts, deleteAdminPost, updatePostStatus, changeAdminPassword, getMonetizationApplications, updateMonetizationApplication, getAdminReports, updateReportStatus, getBroadcasts, getBroadcastReach, createBroadcast, getAdminVibes, updateVibeStatus, deleteAdminVibe, getAdminPayouts, updatePayoutStatus, creditCreatorEarning, getCreatorAds, updateCreatorAdStatus } from '../controllers/adminController.js';
 import { protectAdmin } from '../middleware/adminMiddleware.js';
+import { getAdminNotificationCounts } from '../controllers/adminNotificationsController.js';
 
 const router = express.Router();
 
 router.get('/stats', protectAdmin, getAdminStats);
+router.get('/notifications/counts', protectAdmin, getAdminNotificationCounts);
 router.post('/logout', protectAdmin, adminLogout);
 router.get('/users', protectAdmin, getAdminUsers);
 router.patch('/users/:id/status', protectAdmin, updateUserStatus);
