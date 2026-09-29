@@ -3,28 +3,11 @@ import { getAds, createAd, updateAd, deleteAd } from '../controllers/adminAdsCon
 import { getAdminStats, adminLogout, getAdminUsers, updateUserStatus, getAdminPosts, deleteAdminPost, updatePostStatus, changeAdminPassword, getMonetizationApplications, updateMonetizationApplication, getAdminReports, updateReportStatus, getBroadcasts, getBroadcastReach, createBroadcast, getAdminVibes, updateVibeStatus, deleteAdminVibe, getAdminPayouts, updatePayoutStatus, creditCreatorEarning, getCreatorAds, updateCreatorAdStatus } from '../controllers/adminController.js';
 import { protectAdmin } from '../middleware/adminMiddleware.js';
 import { getAdminNotificationCounts } from '../controllers/adminNotificationsController.js';
-import prisma from '../config/database.js';
 
 const router = express.Router();
 
 router.get('/stats', protectAdmin, getAdminStats);
 router.get('/notifications/counts', protectAdmin, getAdminNotificationCounts);
-router.get('/audit-logs', protectAdmin, async (req, res) => {
-  try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
-    const action = String(req.query.action || '').trim();
-    const where = action ? { action: { contains: action, mode: 'insensitive' } } : {};
-    const [items, total] = await Promise.all([
-      prisma.adminAuditLog.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit, select: { id: true, action: true, targetType: true, targetId: true, details: true, createdAt: true } }),
-      prisma.adminAuditLog.count({ where }),
-    ]);
-    res.json({ items, page, total, totalPages: Math.max(1, Math.ceil(total / limit)) });
-  } catch (error) {
-    console.error('Admin audit logs error:', error);
-    res.status(500).json({ error: 'Failed to load audit logs' });
-  }
-});
 router.post('/logout', protectAdmin, adminLogout);
 router.get('/users', protectAdmin, getAdminUsers);
 router.patch('/users/:id/status', protectAdmin, updateUserStatus);
