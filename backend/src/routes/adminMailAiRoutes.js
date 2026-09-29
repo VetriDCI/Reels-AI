@@ -6,6 +6,26 @@ import { isGmailConfigured, sendGmail } from '../services/gmailService.js';
 
 const router = express.Router();
 
+const safeDetails = (value) => {
+  try { return JSON.parse(JSON.stringify(value ?? {})); } catch { return {}; }
+};
+
+const writeAudit = async (req, action, targetId, details = {}) => {
+  try {
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.userId || null,
+        action,
+        targetType: 'mail',
+        targetId: targetId || null,
+        details: safeDetails(details),
+      },
+    });
+  } catch (auditError) {
+    console.error('Mail AI audit log failed:', auditError?.message || auditError);
+  }
+};
+
 // Google Apps Script / other trusted mail-ingestion webhook.
 // It is intentionally not behind admin JWT because Gmail itself cannot send that JWT.
 router.post('/inbound', async (req, res) => {
@@ -19,6 +39,12 @@ router.post('/inbound', async (req, res) => {
     const subject = String(req.body?.subject || 'No subject').trim();
     const body = String(req.body?.body || '').trim();
     const externalId = String(req.body?.externalId || '').trim() || null;
+    const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments.map((a) => ({
+      name: String(a?.name || 'attachment').slice(0, 255),
+      url: String(a?.url || a?.downloadUrl || '').trim(),
+      mimeType: String(a?.mimeType || a?.contentType || 'application/octet-stream').slice(0, 150),
+      size: Number.isFinite(Number(a?.size)) ? Number(a.size) : null,
+    })).filter((a) => a.url) : [];
     if (!senderEmail || !body) return res.status(400).json({ error: 'senderEmail and body are required' });
     if (externalId) {
       const existing = await prisma.mailAIMessage.findUnique({ where: { externalId } });
@@ -32,6 +58,7 @@ router.post('/inbound', async (req, res) => {
       data: {
         ...(req.body?.userId ? { userId: String(req.body.userId) } : {}),
         senderEmail, receiverEmail, externalId, subject, body,
+        attachments,
         status: shouldReview ? 'review' : 'pending',
         autoReply: false, replyBody,
         category: analysis.category, sentiment: analysis.sentiment, urgency: analysis.urgency,
@@ -46,7 +73,8 @@ router.post('/inbound', async (req, res) => {
         return res.status(201).json({ ...serialize(sent), delivery: 'sent', automatic: true, senderEmail: delivery.from, recipientEmail: delivery.to });
       } catch (sendError) {
         console.error('Mail AI automatic Gmail send failed:', sendError?.message || sendError);
-        return res.status(201).json({ ...serialize(message), automatic: true, delivery: 'failed', warning: 'Reply was prepared but Gmail delivery failed; review and send from Admin.' });
+        await prisma.mailAIReply.create({ data: { messageId: message.id, body: replyBody, status: 'failed' } });
+        return res.status(201).json({ ...serialize({ ...message, replies: [{ id: 'failed-pending', body: replyBody, status: 'failed', createdAt: new Date() }] }), automatic: true, delivery: 'failed', warning: 'Reply was prepared but email delivery failed; use Retry Failed Send from Admin.' });
       }
     }
     return res.status(201).json({ ...serialize(message), automatic: false, delivery: 'review' });
@@ -96,6 +124,8 @@ const serialize = (m) => ({
   createdAt: m.createdAt,
   updatedAt: m.updatedAt,
   replies: m.replies || [],
+  attachments: Array.isArray(m.attachments) ? m.attachments : [],
+  lastDeliveryStatus: m.replies?.[0]?.status || null,
 });
 
 router.get('/config', async (req, res) => {
@@ -104,13 +134,17 @@ router.get('/config', async (req, res) => {
 
 router.get('/stats', async (req, res) => {
   try {
-    const [incoming, replied, pending, review] = await Promise.all([
+    const importantWhere = { status: { in: ['pending', 'review'] }, OR: [{ urgency: { in: ['high', 'critical'] } }, { phishingRisk: 'high' }, { spamScore: { gte: 0.8 } }] };
+    const urgentWhere = { status: { in: ['pending', 'review'] }, urgency: { in: ['high', 'critical'] } };
+    const [incoming, replied, pending, review, important, urgent] = await Promise.all([
       prisma.mailAIMessage.count(),
       prisma.mailAIMessage.count({ where: { status: 'replied' } }),
       prisma.mailAIMessage.count({ where: { status: 'pending' } }),
       prisma.mailAIMessage.count({ where: { status: 'review' } }),
+      prisma.mailAIMessage.count({ where: importantWhere }),
+      prisma.mailAIMessage.count({ where: urgentWhere }),
     ]);
-    res.json({ incoming, replied, pending, review });
+    res.json({ incoming, replied, pending, review, important, urgent });
   } catch (e) { res.status(500).json({ error: 'Could not load Mail AI stats' }); }
 });
 
@@ -118,13 +152,29 @@ router.get('/messages', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     const status = String(req.query.status || '').trim();
+    const urgency = String(req.query.urgency || '').trim();
+    const category = String(req.query.category || '').trim();
+    const important = String(req.query.important || '').trim() === 'true';
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
     const skip = (page - 1) * limit;
     const where = {
       ...(status ? { status } : {}),
+      ...(urgency ? { urgency } : {}),
+      ...(category ? { category } : {}),
+      ...(from || to ? { createdAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
+      ...(important ? { OR: [{ urgency: { in: ['high', 'critical'] } }, { phishingRisk: 'high' }, { spamScore: { gte: 0.8 } }] } : {}),
       ...(q ? { OR: [{ senderEmail: { contains: q, mode: 'insensitive' } }, { subject: { contains: q, mode: 'insensitive' } }, { body: { contains: q, mode: 'insensitive' } }] } : {}),
     };
+    if (important && q) {
+      where.AND = [
+        { OR: [{ urgency: { in: ['high', 'critical'] } }, { phishingRisk: 'high' }, { spamScore: { gte: 0.8 } }] },
+        { OR: [{ senderEmail: { contains: q, mode: 'insensitive' } }, { subject: { contains: q, mode: 'insensitive' } }, { body: { contains: q, mode: 'insensitive' } }] },
+      ];
+      delete where.OR;
+    }
     const [rows, total] = await Promise.all([
       prisma.mailAIMessage.findMany({ where, include: { replies: { orderBy: { createdAt: 'desc' } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
       prisma.mailAIMessage.count({ where }),
@@ -193,6 +243,7 @@ router.post('/messages/:id/generate', async (req, res) => {
     const analysis = analyzeMail(message.subject, message.body);
     const replyBody = await generateReply({ senderEmail: message.senderEmail, subject: message.subject, body: message.body, analysis });
     const updated = await prisma.mailAIMessage.update({ where: { id: message.id }, data: { category: analysis.category, sentiment: analysis.sentiment, urgency: analysis.urgency, spamScore: analysis.spamScore, phishingRisk: analysis.phishingRisk, summary: analysis.summary, replyBody, status: message.status === 'review' ? 'review' : 'pending', replies: { create: { body: replyBody, status: 'generated' } } }, include: { replies: { orderBy: { createdAt: 'desc' } } } });
+    await writeAudit(req, 'mail.reply_generated', updated.id, {});
     res.json(serialize(updated));
   } catch (e) { res.status(500).json({ error: 'Could not generate reply' }); }
 });
@@ -203,7 +254,6 @@ router.post('/messages/:id/send', async (req, res) => {
     if (!message) return res.status(404).json({ error: 'Mail not found' });
     const replyBody = String(req.body?.replyBody || message.replyBody || '').trim();
     if (!replyBody) return res.status(400).json({ error: 'Reply body is required' });
-    if (message.status === 'replied') return res.status(409).json({ error: 'This mail has already been sent.' });
     if (!isGmailConfigured()) return res.status(503).json({ error: 'Gmail is not configured. Add GMAIL_USER and GMAIL_APP_PASSWORD in Render Environment.' });
     const delivery = await sendGmail({
       to: message.senderEmail,
@@ -221,8 +271,37 @@ router.post('/messages/:id/send', async (req, res) => {
       },
       include: { replies: { orderBy: { createdAt: 'desc' } } }
     });
+    await writeAudit(req, 'mail.reply_sent', updated.id, { recipient: delivery.to });
     res.json({ ...serialize(updated), delivery: 'sent', senderEmail: delivery.from, recipientEmail: delivery.to });
-  } catch (e) { res.status(500).json({ error: 'Could not send reply' }); }
+  } catch (e) {
+    try {
+      const message = await prisma.mailAIMessage.findUnique({ where: { id: req.params.id } });
+      const failedBody = String(req.body?.replyBody || message?.replyBody || '').trim();
+      if (message && failedBody) {
+        await prisma.mailAIReply.create({ data: { messageId: message.id, body: failedBody, status: 'failed' } });
+        await writeAudit(req, 'mail.reply_failed', message.id, { error: e?.message || 'Unknown send error' });
+      }
+    } catch (recordError) { console.error('Mail AI failed-send record error:', recordError?.message || recordError); }
+    res.status(502).json({ error: e?.message || 'Could not send reply', retryable: true });
+  }
+});
+
+router.post('/messages/:id/retry', async (req, res) => {
+  try {
+    const message = await prisma.mailAIMessage.findUnique({ where: { id: req.params.id }, include: { replies: { orderBy: { createdAt: 'desc' } } } });
+    if (!message) return res.status(404).json({ error: 'Mail not found' });
+    const failed = message.replies?.find((r) => r.status === 'failed');
+    const replyBody = String(req.body?.replyBody || failed?.body || message.replyBody || '').trim();
+    if (!replyBody) return res.status(400).json({ error: 'No failed reply is available to retry.' });
+    if (!isGmailConfigured()) return res.status(503).json({ error: 'Gmail is not configured. Add the email service environment variables in Render.' });
+    const delivery = await sendGmail({ to: message.senderEmail, subject: message.subject?.toLowerCase().startsWith('re:') ? message.subject : `Re: ${message.subject || 'RA Social Support'}`, text: replyBody, replyTo: process.env.GMAIL_USER || 'rasocialofficial@gmail.com' });
+    const updated = await prisma.mailAIMessage.update({ where: { id: message.id }, data: { replyBody, status: 'replied', autoReply: true, replies: { create: { body: replyBody, status: 'sent' } } }, include: { replies: { orderBy: { createdAt: 'desc' } } } });
+    await writeAudit(req, 'mail.retry_sent', message.id, { recipient: delivery.to });
+    res.json({ ...serialize(updated), delivery: 'sent', senderEmail: delivery.from, recipientEmail: delivery.to });
+  } catch (e) {
+    try { await writeAudit(req, 'mail.retry_failed', req.params.id, { error: e?.message || 'Unknown retry error' }); } catch {}
+    res.status(502).json({ error: e?.message || 'Retry failed', retryable: true });
+  }
 });
 
 router.patch('/messages/:id', async (req, res) => {
@@ -231,8 +310,37 @@ router.patch('/messages/:id', async (req, res) => {
     if (typeof req.body?.replyBody === 'string') data.replyBody = req.body.replyBody;
     if (['pending','review','replied'].includes(req.body?.status)) data.status = req.body.status;
     const updated = await prisma.mailAIMessage.update({ where: { id: req.params.id }, data, include: { replies: { orderBy: { createdAt: 'desc' } } } });
+    await writeAudit(req, 'mail.draft_updated', updated.id, { status: updated.status });
     res.json(serialize(updated));
   } catch (e) { res.status(400).json({ error: 'Could not update mail' }); }
+});
+
+router.post('/messages/bulk', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? [...new Set(req.body.ids.map((id) => String(id).trim()).filter(Boolean))]
+      : [];
+    const action = String(req.body?.action || '').trim();
+    if (!ids.length) return res.status(400).json({ error: 'Select at least one mail.' });
+    if (!['reviewed', 'delete'].includes(action)) return res.status(400).json({ error: 'Invalid bulk action.' });
+
+    if (action === 'delete') {
+      await prisma.mailAIReply.deleteMany({ where: { messageId: { in: ids } } });
+      const result = await prisma.mailAIMessage.deleteMany({ where: { id: { in: ids } } });
+      for (const id of ids) await writeAudit(req, 'mail.bulk_deleted', id, {});
+      return res.json({ success: true, action, count: result.count });
+    }
+
+    const result = await prisma.mailAIMessage.updateMany({
+      where: { id: { in: ids }, status: 'review' },
+      data: { status: 'pending' },
+    });
+    for (const id of ids) await writeAudit(req, 'mail.bulk_reviewed', id, {});
+    res.json({ success: true, action, count: result.count });
+  } catch (e) {
+    console.error('Mail AI bulk action error:', e);
+    res.status(400).json({ error: 'Could not complete bulk action' });
+  }
 });
 
 router.delete('/messages/:id', async (req, res) => {
@@ -241,6 +349,7 @@ router.delete('/messages/:id', async (req, res) => {
     if (!message) return res.status(404).json({ error: 'Mail not found' });
     await prisma.mailAIReply.deleteMany({ where: { messageId: req.params.id } });
     await prisma.mailAIMessage.delete({ where: { id: req.params.id } });
+    await writeAudit(req, 'mail.deleted', req.params.id, {});
     res.json({ success: true, id: req.params.id });
   } catch (e) { res.status(400).json({ error: 'Could not delete mail' }); }
 });

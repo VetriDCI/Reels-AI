@@ -63,6 +63,7 @@ model User {
   vibeViews       VibeView[]
   mailAiMails    MailAIMessage[] @relation("MailAiUser")
   liveSessions  CreatorLiveSession[]
+  auditLogs     AdminAuditLog[]
 
   @@index([username])
   @@index([email])
@@ -544,6 +545,7 @@ model MailAIMessage {
   spamScore       Float           @default(0)
   phishingRisk    String          @default("low")
   summary         String?
+  attachments     Json?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   replies         MailAIReply[]
@@ -562,4 +564,19 @@ model MailAIReply {
   createdAt   DateTime      @default(now())
 
   @@index([messageId, createdAt])
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String?
+  admin      User?    @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String?
+  targetId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
 }
