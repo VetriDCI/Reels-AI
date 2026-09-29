@@ -129,7 +129,14 @@ router.get('/messages', async (req, res) => {
       prisma.mailAIMessage.findMany({ where, include: { replies: { orderBy: { createdAt: 'desc' } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
       prisma.mailAIMessage.count({ where }),
     ]);
-    res.json({ messages: rows.map(serialize), total, page, limit, hasMore: skip + rows.length < total });
+    // Body stays a plain array (same shape as before pagination existed) so this endpoint
+    // keeps working even if only one side (frontend or backend) gets redeployed first.
+    // Pagination info travels via headers instead of changing the JSON shape.
+    res.set('X-Total-Count', String(total));
+    res.set('X-Page', String(page));
+    res.set('X-Has-More', String(skip + rows.length < total));
+    res.set('Access-Control-Expose-Headers', 'X-Total-Count, X-Page, X-Has-More');
+    res.json(rows.map(serialize));
   } catch (e) { res.status(500).json({ error: 'Could not load Mail AI messages' }); }
 });
 
