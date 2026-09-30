@@ -203,6 +203,7 @@ router.post('/messages/:id/send', async (req, res) => {
     if (!message) return res.status(404).json({ error: 'Mail not found' });
     const replyBody = String(req.body?.replyBody || message.replyBody || '').trim();
     if (!replyBody) return res.status(400).json({ error: 'Reply body is required' });
+    if (message.status === 'replied') return res.status(409).json({ error: 'This mail has already been sent.' });
     if (!isGmailConfigured()) return res.status(503).json({ error: 'Gmail is not configured. Add GMAIL_USER and GMAIL_APP_PASSWORD in Render Environment.' });
     const delivery = await sendGmail({
       to: message.senderEmail,
@@ -232,32 +233,6 @@ router.patch('/messages/:id', async (req, res) => {
     const updated = await prisma.mailAIMessage.update({ where: { id: req.params.id }, data, include: { replies: { orderBy: { createdAt: 'desc' } } } });
     res.json(serialize(updated));
   } catch (e) { res.status(400).json({ error: 'Could not update mail' }); }
-});
-
-router.post('/messages/bulk', async (req, res) => {
-  try {
-    const ids = Array.isArray(req.body?.ids)
-      ? [...new Set(req.body.ids.map((id) => String(id).trim()).filter(Boolean))]
-      : [];
-    const action = String(req.body?.action || '').trim();
-    if (!ids.length) return res.status(400).json({ error: 'Select at least one mail.' });
-    if (!['reviewed', 'delete'].includes(action)) return res.status(400).json({ error: 'Invalid bulk action.' });
-
-    if (action === 'delete') {
-      await prisma.mailAIReply.deleteMany({ where: { messageId: { in: ids } } });
-      const result = await prisma.mailAIMessage.deleteMany({ where: { id: { in: ids } } });
-      return res.json({ success: true, action, count: result.count });
-    }
-
-    const result = await prisma.mailAIMessage.updateMany({
-      where: { id: { in: ids }, status: 'review' },
-      data: { status: 'pending' },
-    });
-    res.json({ success: true, action, count: result.count });
-  } catch (e) {
-    console.error('Mail AI bulk action error:', e);
-    res.status(400).json({ error: 'Could not complete bulk action' });
-  }
 });
 
 router.delete('/messages/:id', async (req, res) => {
