@@ -14,6 +14,8 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
   const [commentLoading, setCommentLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareChatOpen, setShareChatOpen] = useState(false);
+  const [shareOptionsOpen, setShareOptionsOpen] = useState(false);
+  const [downloadConfirmOpen, setDownloadConfirmOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [following, setFollowing] = useState(Boolean(post._following || post.following));
@@ -54,13 +56,24 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
       setComments(prev => [res.data.data, ...prev]); setComment(''); setReplyTo(null);
     } catch (e) { alert(e.response?.data?.message || 'Failed to add comment'); }
   };
-  const share = async () => {
+  const shareVibe = async () => {
     const url = `${window.location.origin}/?post=${post.id}`;
-    try { if (navigator.share) await navigator.share({ title: 'RA Social post', text: post.content || 'Check this post', url }); else await navigator.clipboard.writeText(url); setSharing(true); setTimeout(() => setSharing(false), 1200); } catch {}
+    try {
+      if (navigator.share) await navigator.share({ title: 'RA Social post', text: post.content || 'Check this post', url });
+      else await navigator.clipboard.writeText(url);
+      setSharing(true);
+      setTimeout(() => setSharing(false), 1200);
+    } catch {}
+    setShareOptionsOpen(false);
   };
   const mediaLooksLikeVideo = Boolean(post.mediaType === 'video' || /\.(mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(post.mediaUrl || '') || /[?&]resource_type=video/i.test(post.mediaUrl || ''));
-  const handleDownload = async () => {
+  const handleDownload = () => {
     if (!post.mediaUrl || downloading) return;
+    setDownloadConfirmOpen(true);
+  };
+  const confirmDownload = async () => {
+    if (!post.mediaUrl || downloading) return;
+    setDownloadConfirmOpen(false);
     setDownloading(true);
     const ext = mediaLooksLikeVideo ? 'mp4' : 'jpg';
     try { await downloadMedia(post.mediaUrl, `ra-social-${post.id}.${ext}`, postAPI.download(post.id)); } finally { setDownloading(false); }
@@ -119,8 +132,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
         <div className="flex items-center gap-1.5 pr-12 overflow-x-auto whitespace-nowrap">
           <button onClick={onLike} className="action-btn hover:text-red-500"><Heart className="w-5 h-5" /><span>{post.likesCount || 0}</span></button>
           <button onClick={loadComments} className="action-btn hover:text-blue-500"><MessageSquare className="w-5 h-5" /><span>{post.commentsCount || 0}</span></button>
-          <button onClick={share} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
-          <button onClick={() => setShareChatOpen(true)} className="action-btn hover:text-purple-600" title="Share to Chat"><Send className="w-5 h-5" /><span>Chat</span></button>
+          <button onClick={() => setShareOptionsOpen(true)} className="action-btn hover:text-green-500"><Share2 className="w-5 h-5" /><span>{sharing ? 'Copied' : 'Share'}</span></button>
           {post.mediaUrl && <button onClick={handleDownload} disabled={downloading} className="action-btn hover:text-purple-600 disabled:opacity-50"><Download className="w-5 h-5" /><span>{downloading ? 'Saving…' : 'Download'}</span></button>}
         </div>
         <div ref={menuRef} className="absolute right-3 bottom-3 z-[90]">
@@ -135,7 +147,7 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
         </div>
       </div>
 
-      {commentOpen && <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setCommentOpen(false)}>
+      {commentOpen && <div className="fixed inset-0 z-[9999] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setCommentOpen(false)}>
         <div className="bg-white w-full sm:max-w-lg max-h-[78vh] rounded-t-2xl sm:rounded-2xl flex flex-col" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between p-4 border-b"><b>Comments</b><button onClick={() => setCommentOpen(false)}><X className="w-5 h-5" /></button></div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -144,6 +156,22 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
             {comments.map(c => <div key={c.id} className="rounded-xl bg-gray-50 p-3"><div className="flex items-start gap-2"><img src={c.user?.avatarUrl || `https://i.pravatar.cc/80?u=${c.user?.id}`} className="w-8 h-8 rounded-full" alt="" /><div className="flex-1"><b className="text-sm">{c.user?.fullName || c.user?.username}</b><p className="text-sm text-gray-700 mt-1 break-words">{c.content}</p><div className="flex gap-4 mt-2"><button className="text-xs text-gray-500 hover:text-red-500"><Heart className="inline w-3.5 h-3.5 mr-1" />Like</button><button onClick={() => { setReplyTo(c); setComment(''); }} className="text-xs text-gray-500 hover:text-purple-600"><Reply className="inline w-3.5 h-3.5 mr-1" />Reply</button></div></div></div></div>)}
           </div>
           <div className="p-3 border-t">{replyTo && <div className="flex items-center justify-between text-xs text-purple-600 mb-2">Replying to {replyTo.user?.fullName || replyTo.user?.username}<button onClick={() => setReplyTo(null)}><X className="w-4 h-4" /></button></div>}<div className="flex gap-2"><input autoFocus value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addComment()} placeholder={replyTo ? 'Write a reply…' : 'Write a comment…'} className="flex-1 border rounded-full px-4 py-2 text-sm outline-none" /><button onClick={addComment} className="p-2 rounded-full bg-purple-600 text-white"><Send className="w-4 h-4" /></button></div></div>
+        </div>
+      </div>}
+      {shareOptionsOpen && <div className="fixed inset-0 z-[9998] bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOptionsOpen(false)}>
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-4"><b className="text-lg">Share</b><button onClick={() => setShareOptionsOpen(false)} aria-label="Close share options"><X className="w-5 h-5" /></button></div>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={shareVibe} className="flex flex-col items-center gap-2 rounded-xl border p-4 hover:bg-gray-50"><Share2 className="w-6 h-6 text-green-600" /><span className="text-sm font-semibold">Share Vibe</span></button>
+            <button onClick={() => { setShareOptionsOpen(false); setShareChatOpen(true); }} className="flex flex-col items-center gap-2 rounded-xl border p-4 hover:bg-gray-50"><Send className="w-6 h-6 text-purple-600" /><span className="text-sm font-semibold">Chat</span></button>
+          </div>
+        </div>
+      </div>}
+      {downloadConfirmOpen && <div className="fixed inset-0 z-[9997] bg-black/50 flex items-center justify-center p-4" onClick={() => setDownloadConfirmOpen(false)}>
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+          <h3 className="text-lg font-bold text-gray-900">Download</h3>
+          <p className="text-sm text-gray-600 mt-2">Do you want to download this media?</p>
+          <div className="flex justify-end gap-2 mt-5"><button onClick={() => setDownloadConfirmOpen(false)} className="px-4 py-2 rounded-lg border text-sm font-semibold">Cancel</button><button onClick={confirmDownload} className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold">OK</button></div>
         </div>
       </div>}
       <ShareToChatModal open={shareChatOpen} onClose={() => setShareChatOpen(false)} item={{ ...post, currentUserId: user?.id }} />

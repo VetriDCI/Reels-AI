@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Share2, Download, MoreHorizontal, Eye, Bell, Search as SearchIcon, X, Send, Link2, Flag, ExternalLink } from 'lucide-react';
 import { savedPostAPI, postAPI, followAPI } from '../services/api';
+import ShareToChatModal from '../components/ShareToChatModal';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
 
@@ -13,6 +14,9 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   const [current, setCurrent] = useState(0);
   const [videoErrors, setVideoErrors] = useState({});
   const [sharedId, setSharedId] = useState(null);
+  const [shareOptionsOpen, setShareOptionsOpen] = useState(null);
+  const [shareChatOpen, setShareChatOpen] = useState(null);
+  const [downloadConfirmOpen, setDownloadConfirmOpen] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [menuForId, setMenuForId] = useState(null);
   const [commentReel, setCommentReel] = useState(null);
@@ -105,7 +109,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
     } catch (err) { console.error('Failed to follow', err); }
   };
 
-  const handleShare = async (reel) => {
+  const shareVibe = async (reel) => {
     const url = `${window.location.origin}/?post=${reel.id}`;
     try {
       if (navigator.share) await navigator.share({ title: 'RA Social reel', text: reel.content || 'Check this reel', url });
@@ -113,10 +117,17 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
       setSharedId(reel.id);
       setTimeout(() => setSharedId(null), 1500);
     } catch {}
+    setShareOptionsOpen(null);
   };
 
-  const handleDownload = async (reel) => {
+  const handleDownload = (reel) => {
     if (downloadingId) return;
+    setDownloadConfirmOpen(reel.id);
+  };
+
+  const confirmDownload = async (reel) => {
+    if (!reel || downloadingId) return;
+    setDownloadConfirmOpen(null);
     setDownloadingId(reel.id);
     const result = await downloadMedia(reel.mediaUrl, `ra-social-reel-${reel.id}.mp4`, postAPI.download(reel.id));
     if (!result.success && result.error) alert(`Download could not start: ${result.error}`);
@@ -207,7 +218,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
             <div className="flex flex-col items-center gap-1"><Eye className="w-6 h-6" /><span className="text-xs">{(views[reel.id] || 0).toLocaleString()}</span></div>
             <button onClick={() => handleLike(reel.id)} className="flex flex-col items-center gap-1"><Heart className={`w-7 h-7 ${reel._liked ? 'fill-pink-500 text-pink-500' : ''}`} /><span className="text-xs">{reel.likesCount || 0}</span></button>
             <button onClick={() => openComments(reel)} className="flex flex-col items-center gap-1"><MessageCircle className="w-6 h-6" /><span className="text-xs">{reel.commentsCount || 0}</span></button>
-            <button onClick={() => handleShare(reel)} className="flex flex-col items-center gap-1"><Share2 className="w-6 h-6" /><span className="text-xs">{sharedId === reel.id ? 'Copied!' : 'Share'}</span></button>
+            <button onClick={() => setShareOptionsOpen(reel.id)} className="flex flex-col items-center gap-1"><Share2 className="w-6 h-6" /><span className="text-xs">{sharedId === reel.id ? 'Copied!' : 'Share'}</span></button>
             <button onClick={() => handleDownload(reel)} disabled={downloadingId === reel.id} className="flex flex-col items-center gap-1 disabled:opacity-50"><Download className="w-6 h-6" /><span className="text-xs">{downloadingId === reel.id ? 'Saving...' : 'Download'}</span></button>
             <div ref={el => { menuRefs.current[reel.id] = el; }} className="relative">
               <button onClick={() => setMenuForId(menuForId === reel.id ? null : reel.id)} aria-label="More options"><MoreHorizontal className="w-6 h-6" /></button>
@@ -235,6 +246,27 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
           </div>
         </div>
       ))}
+
+      {shareOptionsOpen && (() => { const reel = reels.find(r => r.id === shareOptionsOpen); if (!reel) return null; return (
+        <div className="fixed inset-0 z-[9998] bg-black/60 flex items-center justify-center p-4" onClick={() => setShareOptionsOpen(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5 text-gray-900" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4"><b className="text-lg">Share</b><button onClick={() => setShareOptionsOpen(null)} aria-label="Close share options"><X className="w-5 h-5" /></button></div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => shareVibe(reel)} className="flex flex-col items-center gap-2 rounded-xl border p-4 hover:bg-gray-50"><Share2 className="w-6 h-6 text-green-600" /><span className="text-sm font-semibold">Share Vibe</span></button>
+              <button onClick={() => { setShareOptionsOpen(null); setShareChatOpen(reel); }} className="flex flex-col items-center gap-2 rounded-xl border p-4 hover:bg-gray-50"><Send className="w-6 h-6 text-purple-600" /><span className="text-sm font-semibold">Chat</span></button>
+            </div>
+          </div>
+        </div>
+      ); })()}
+      {downloadConfirmOpen && (() => { const reel = reels.find(r => r.id === downloadConfirmOpen); if (!reel) return null; return (
+        <div className="fixed inset-0 z-[9997] bg-black/60 flex items-center justify-center p-4" onClick={() => setDownloadConfirmOpen(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5 text-gray-900" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">Download</h3><p className="text-sm text-gray-600 mt-2">Do you want to download this reel?</p>
+            <div className="flex justify-end gap-2 mt-5"><button onClick={() => setDownloadConfirmOpen(null)} className="px-4 py-2 rounded-lg border text-sm font-semibold">Cancel</button><button onClick={() => confirmDownload(reel)} className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold">OK</button></div>
+          </div>
+        </div>
+      ); })()}
+      {shareChatOpen && <ShareToChatModal open={Boolean(shareChatOpen)} onClose={() => setShareChatOpen(null)} item={{ ...shareChatOpen, currentUserId: currentUser?.id }} />}
 
       {commentReel && (
         <div className="fixed inset-0 z-[80] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setCommentReel(null)}>
