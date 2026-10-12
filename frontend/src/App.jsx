@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, X } from 'lucide-react';
+import { Home, Film, Plus, Sparkles, MessageCircle, User, Search, Bell, X, WifiOff } from 'lucide-react';
 import { postAPI, notificationAPI } from './services/api';
 
 // Pages
@@ -29,6 +29,7 @@ import { applyInterfacePrefs } from './pages/settings/InterfaceAccessibilityPage
 import CreatePostModal from './components/CreatePostModal';
 import PostCard from './components/PostCard';
 import InstallPrompt from './components/InstallPrompt';
+import UploadProgress from './components/UploadProgress';
 import GuestProfilePage from './pages/GuestProfilePage';
 
 function AppContent() {
@@ -46,6 +47,13 @@ function AppContent() {
   const [publicProfileId, setPublicProfileId] = useState(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [savedReturnTab, setSavedReturnTab] = useState('me');
+  const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => setIsOffline(false);
+    window.addEventListener('offline', goOffline); window.addEventListener('online', goOnline);
+    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
+  }, []);
   const [draftToEdit, setDraftToEdit] = useState(null);
   const [hashtagName, setHashtagName] = useState('');
   const [reportHistory, setReportHistory] = useState(false);
@@ -258,6 +266,14 @@ function AppContent() {
           <Search className="w-5 h-5 text-gray-700" />
         </button>
       )}
+      {isOffline && activeTab !== 'saved' && (
+        <div className="fixed left-3 right-3 bottom-24 z-[60] mx-auto max-w-md flex items-center gap-2 rounded-2xl bg-gray-900/95 px-4 py-3 text-white shadow-xl">
+          <WifiOff className="w-5 h-5 shrink-0 text-amber-300" />
+          <p className="flex-1 text-xs">You are offline.</p>
+          <button onClick={() => { setSavedReturnTab('home'); navigateTab('saved'); }} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-900">Saved videos</button>
+        </div>
+      )}
+      <UploadProgress />
       <InstallPrompt />
     </div>
   );

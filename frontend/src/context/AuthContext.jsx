@@ -3,12 +3,22 @@ import { authAPI, sessionAPI } from '../services/api';
 
 const AuthContext = createContext(null);
 
+// Keeps the last signed-in profile on this device so the app can open offline.
+const USER_CACHE_KEY = 'ra_cached_user';
+const cacheUser = (value) => { try { if (value) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(value)); } catch { /* storage full or blocked */ } };
+const readCachedUser = () => { try { return JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null'); } catch { return null; } };
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     checkAuth();
+    // When the connection comes back, re-check the session in the background.
+    const onOnline = () => { if (localStorage.getItem('token')) checkAuth(true); };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkAuth = async (isRetry = false) => {
@@ -20,6 +30,7 @@ export function AuthProvider({ children }) {
     try {
       const response = await authAPI.getMe();
       setUser(response.data.data);
+      cacheUser(response.data.data);
       setLoading(false);
     } catch (error) {
       const status = error.response?.status;
@@ -27,6 +38,15 @@ export function AuthProvider({ children }) {
         // Token really is invalid/expired — this is the only case that
         // should force a re-login.
         localStorage.removeItem('token');
+        localStorage.removeItem(USER_CACHE_KEY);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      // No internet: open the app with the last known profile (saved videos stay watchable).
+      if (!error.response && navigator.onLine === false) {
+        const cached = readCachedUser();
+        if (cached) setUser(cached);
         setLoading(false);
         return;
       }
@@ -52,6 +72,7 @@ export function AuthProvider({ children }) {
     const { user, token } = data;
     localStorage.setItem('token', token);
     setUser(user);
+    cacheUser(user);
     return user;
   };
 
@@ -60,17 +81,20 @@ export function AuthProvider({ children }) {
     const { user, token } = response.data.data;
     localStorage.setItem('token', token);
     setUser(user);
+    cacheUser(user);
     return user;
   };
 
   const logout = async () => {
     try { if (localStorage.getItem('token')) await sessionAPI.logout(); } catch (error) { console.warn('Session logout request failed', error); }
     localStorage.removeItem('token');
+    localStorage.removeItem(USER_CACHE_KEY);
     setUser(null);
   };
 
   const updateUser = (updatedUser) => {
     setUser(updatedUser);
+    cacheUser(updatedUser);
   };
 
   return (

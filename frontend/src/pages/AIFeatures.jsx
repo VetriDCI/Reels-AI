@@ -91,6 +91,8 @@ function AIFeatures({ searchQuery = '' }) {
   const [aiEditIndex, setAiEditIndex] = useState(null);
   const [aiEditSaving, setAiEditSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pendingUploads, setPendingUploads] = useState([]);
+  const textareaRef = useRef(null);
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -227,18 +229,26 @@ function AIFeatures({ searchQuery = '' }) {
     }
   };
 
-  const handleFiles = async (event) => {
-    const selected = Array.from(event.target.files || []);
-    event.target.value = '';
-    if (!selected.length) return;
+  // Shared by the + button, paste and drag-drop. Shows an instant preview with a 0-100% progress ring.
+  const processFiles = async (selected) => {
+    if (!selected.length || uploading) return;
 
     const available = MAX_FILES - attachments.length;
-    const files = selected.slice(0, available);
-    if (!files.length) return;
+    const files = selected.slice(0, Math.max(0, available));
+    if (!files.length) { alert(`You can attach up to ${MAX_FILES} files.`); return; }
+    const tooBig = files.find((file) => file.size > 50 * 1024 * 1024);
+    if (tooBig) { alert(`${tooBig.name} is larger than 50 MB.`); return; }
 
+    const batch = `${Date.now()}-${Math.random()}`;
+    const pending = files.map((file, index) => ({ id: `${batch}-${index}`, name: file.name, type: file.type, previewUrl: file.type?.startsWith('image/') ? URL.createObjectURL(file) : null, progress: 0 }));
+    setPendingUploads((prev) => [...prev, ...pending]);
     setUploading(true);
     try {
-      const res = await aiAPI.upload(files);
+      const res = await aiAPI.upload(files, (event) => {
+        if (!event.total) return;
+        const progress = Math.min(99, Math.round((event.loaded / event.total) * 100));
+        setPendingUploads((prev) => prev.map((item) => (item.id.startsWith(batch) ? { ...item, progress } : item)));
+      });
       const uploaded = res.data?.data?.files || [];
       setAttachments((prev) => [...prev, ...uploaded].slice(0, MAX_FILES));
       setRawFiles((prev) => [...prev, ...files].slice(0, MAX_FILES));
@@ -246,9 +256,36 @@ function AIFeatures({ searchQuery = '' }) {
       console.error('AI upload error:', error);
       alert(error.response?.data?.message || 'Could not upload attachment.');
     } finally {
+      pending.forEach((item) => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl); });
+      setPendingUploads((prev) => prev.filter((item) => !item.id.startsWith(batch)));
       setUploading(false);
     }
   };
+
+  const handleFiles = async (event) => {
+    const selected = Array.from(event.target.files || []);
+    event.target.value = '';
+    await processFiles(selected);
+  };
+
+  const handlePaste = (event) => {
+    const images = Array.from(event.clipboardData?.files || []).filter((file) => file.type?.startsWith('image/'));
+    if (!images.length) return;
+    event.preventDefault();
+    processFiles(images);
+  };
+
+  // Local thumbnails for uploaded images (instant, no extra download)
+  const rawPreviews = React.useMemo(() => rawFiles.map((file) => (file?.type?.startsWith('image/') ? URL.createObjectURL(file) : null)), [rawFiles]);
+  useEffect(() => () => { rawPreviews.forEach((url) => { if (url) URL.revokeObjectURL(url); }); }, [rawPreviews]);
+
+  // The message box grows with the text (like ChatGPT / Claude) up to about 6 lines.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [inputText]);
 
   const applyAIEdit = async (editedFile) => {
     if (aiEditIndex == null || !editedFile) return;
@@ -584,7 +621,9 @@ function AIFeatures({ searchQuery = '' }) {
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    // On phones Enter adds a new line (there is no Shift key); the send button sends.
+    const touchKeyboard = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+    if (event.key === 'Enter' && !event.shiftKey && !touchKeyboard) {
       event.preventDefault();
       if (sending || uploading) return;
       if (mediaGenerateMode) return runMediaGeneration();
@@ -817,15 +856,33 @@ function AIFeatures({ searchQuery = '' }) {
             )}
           </section>
 
-          <div className="shrink-0 bg-white border-t px-3 md:px-6 py-3">
+          <div className="shrink-0 bg-white border-t px-3 md:px-6 py-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); processFiles(Array.from(e.dataTransfer?.files || [])); }}>
             <div className="max-w-3xl mx-auto">
-              {attachments.length > 0 && (
+              {(attachments.length > 0 || pendingUploads.length > 0) && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
-                  {attachments.map((file, index) => (
+                  {attachments.map((file, index) => (rawFiles[index]?.type?.startsWith('image/') || file.type === 'image' || file.mimeType?.startsWith('image/')) ? (
+                    <div key={`${file.url}-${index}`} className="relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-gray-200 bg-gray-100">
+                      <img src={rawPreviews[index] || file.url} alt={file.name || 'Attached image'} className="w-full h-full object-cover" />
+                      <button onClick={() => removeAttachment(index)} aria-label="Remove image" className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center"><X size={12} /></button>
+                      {rawFiles[index]?.type?.startsWith('image/') && <button onClick={() => setAiEditIndex(index)} disabled={aiEditSaving} className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[10px] font-semibold py-0.5">Edit</button>}
+                    </div>
+                  ) : (
                     <div key={`${file.url}-${index}`} className="relative shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-xs">
                       {fileIcon(file.mimeType)}<span className="max-w-32 truncate">{file.name}</span>
                       {rawFiles[index]?.type?.startsWith('image/') || rawFiles[index]?.type?.startsWith('video/') ? <button onClick={() => setAiEditIndex(index)} disabled={aiEditSaving} className="text-purple-600 font-semibold">Edit</button> : null}
                       <button onClick={() => removeAttachment(index)} className="text-gray-500 hover:text-red-500"><X size={14} /></button>
+                    </div>
+                  ))}
+                  {pendingUploads.map((item) => item.previewUrl ? (
+                    <div key={item.id} className="relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-gray-200 bg-gray-100">
+                      <img src={item.previewUrl} alt={item.name} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={item.progress}>
+                        <Loader2 size={16} className="animate-spin" /><span className="text-[10px] font-semibold mt-0.5">{item.progress}%</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={item.id} className="relative shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-xs" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={item.progress}>
+                      <Loader2 size={14} className="animate-spin text-purple-600" /><span className="max-w-32 truncate">{item.name}</span><span className="font-semibold text-purple-600">{item.progress}%</span>
                     </div>
                   ))}
                 </div>
@@ -957,12 +1014,12 @@ function AIFeatures({ searchQuery = '' }) {
               )}
               {actionNotice && <div className="mb-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-center text-xs text-green-700">{actionNotice}</div>}
               <div className="flex items-end gap-2 border rounded-2xl p-2 shadow-sm focus-within:border-purple-400 bg-white">
-                <button onClick={() => audioInputRef.current?.click()} disabled={sending} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-40" title="Voice transcription"><Mic size={20} /></button>
+                <button onClick={() => audioInputRef.current?.click()} disabled={sending} className="shrink-0 w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-40" title="Voice transcription"><Mic size={20} /></button>
                 <input ref={audioInputRef} type="file" accept="audio/*" onChange={handleAudio} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} disabled={uploading || attachments.length >= MAX_FILES} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-40" title="Attach files"><Plus size={23} /></button>
+                <button onClick={() => fileInputRef.current?.click()} disabled={uploading || attachments.length >= MAX_FILES} className="shrink-0 w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 disabled:opacity-40" title="Attach files"><Plus size={23} /></button>
                 <input ref={fileInputRef} type="file" multiple accept="image/*,video/*,.pdf,.txt,.json,.csv,.md,.log,.xml,.html,.css,.js,.jsx,.ts,.tsx,.sql,.prisma,.yaml,.yml,.zip" onChange={handleFiles} className="hidden" />
-                <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown} rows={1} placeholder={uploading ? 'Uploading files...' : 'Message RA Social AI...'} className="flex-1 resize-none outline-none bg-transparent px-2 py-2 max-h-32" />
-                <button onClick={mediaGenerateMode ? runMediaGeneration : researchMode ? runDeepResearch : codingMode ? runCodingAI : dataMode ? runDataAI : writingMode ? runWritingAI : socialMode ? runSocialAI : creativeMode ? runCreativeAI : videoMode ? runVideoAI : memoryMode ? saveMemory : sendMessage} disabled={sending || uploading || (!inputText.trim() && !attachments.length) || (Boolean(mediaGenerateMode) && modeLimitReached)} className="w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white flex items-center justify-center disabled:opacity-40" title={mediaGenerateMode ? `Generate ${mediaGenerateMode}` : researchMode ? 'Start research' : codingMode ? 'Run coding AI' : dataMode ? 'Run data analysis' : writingMode ? 'Run Writing AI' : socialMode ? 'Run Social & Reels AI' : creativeMode ? 'Run Creative AI' : videoMode ? 'Run Video AI' : memoryMode ? 'Save memory' : 'Send'}><Send size={18} /></button>
+                <textarea ref={textareaRef} value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown} onPaste={handlePaste} rows={1} placeholder={uploading ? 'Uploading files...' : 'Message RA Social AI...'} className="flex-1 min-w-0 resize-none outline-none bg-transparent px-2 py-2 text-base leading-6 max-h-40 overflow-y-auto" />
+                <button onClick={mediaGenerateMode ? runMediaGeneration : researchMode ? runDeepResearch : codingMode ? runCodingAI : dataMode ? runDataAI : writingMode ? runWritingAI : socialMode ? runSocialAI : creativeMode ? runCreativeAI : videoMode ? runVideoAI : memoryMode ? saveMemory : sendMessage} disabled={sending || uploading || (!inputText.trim() && !attachments.length) || (Boolean(mediaGenerateMode) && modeLimitReached)} className="shrink-0 w-10 h-10 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white flex items-center justify-center disabled:opacity-40" title={mediaGenerateMode ? `Generate ${mediaGenerateMode}` : researchMode ? 'Start research' : codingMode ? 'Run coding AI' : dataMode ? 'Run data analysis' : writingMode ? 'Run Writing AI' : socialMode ? 'Run Social & Reels AI' : creativeMode ? 'Run Creative AI' : videoMode ? 'Run Video AI' : memoryMode ? 'Save memory' : 'Send'}><Send size={18} /></button>
               </div>
               {mediaUsage && (
                 <div className="mt-2 flex flex-wrap justify-center gap-x-3 text-[10px] text-gray-500">

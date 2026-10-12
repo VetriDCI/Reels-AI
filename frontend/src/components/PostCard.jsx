@@ -4,6 +4,7 @@ import { postAPI, followAPI, reportAPI, savedPostAPI } from '../services/api';
 import ShareToChatModal from './ShareToChatModal';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
+import { saveOffline, removeOffline } from '../utils/offlineSaved';
 
 function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) {
   const { user } = useAuth();
@@ -71,8 +72,8 @@ function PostCard({ post, onLike, onOpenReel, profileMode = false, onChanged }) 
     if (saveLoading) return;
     setSaveLoading(true);
     try {
-      if (saved) { await savedPostAPI.remove(post.id); setSaved(false); alert('Removed from Saved'); }
-      else { await savedPostAPI.save(post.id); setSaved(true); alert('Saved'); }
+      if (saved) { await savedPostAPI.remove(post.id); removeOffline(post.id); setSaved(false); alert('Removed from Saved'); }
+      else { await savedPostAPI.save(post.id); setSaved(true); saveOffline(post).catch(() => {}); alert('Saved'); }
     } catch (e) { alert(e.response?.data?.message || 'Unable to update saved post'); } finally { setSaveLoading(false); setMenuOpen(false); }
   };
 

@@ -27,10 +27,10 @@ export const aiAPI = {
     if (conversationId) formData.append('conversationId', conversationId);
     return api.post('/ai/file-analyze', formData);
   },
-  upload: (files) => {
+  upload: (files, onUploadProgress) => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
-    return api.post('/ai/upload', formData);
+    return api.post('/ai/upload', formData, onUploadProgress ? { onUploadProgress } : undefined);
   },
   history: () => api.get('/ai/history'),
   getConversation: (id) => api.get(`/ai/history/${id}`),

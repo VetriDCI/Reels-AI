@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { X, Image, Video, Radio, RotateCcw, Pencil, Check, RefreshCw, Play, Pause } from 'lucide-react';
-import { postAPI, uploadAPI } from '../services/api';
+import { uploadAPI } from '../services/api';
 import MediaEditor from './MediaEditor';
+import { startPostUpload } from '../utils/uploadManager';
 
 function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, initialDraft, onDraftSaved }) {
   const [content, setContent] = useState(initialDraft?.content || '');
@@ -166,28 +167,24 @@ function CreatePostModal({ onClose, onPostCreated, userId, isCreator = false, in
     finally { setDraftSaving(false); }
   };
 
-  const handleSubmit = async () => {
+  // Publishing now runs in the background (see utils/uploadManager.js) so the modal closes
+  // immediately and progress (1% to 100%) shows as a notification on every screen.
+  const handleSubmit = () => {
     const selectedFiles = files.length ? files : (file ? [file] : []);
     if (!content.trim() && !selectedFiles.length && !initialDraft?.mediaUrl) return;
-    setUploadStage('uploading');
-    try {
-      const items = selectedFiles.length ? await Promise.all(selectedFiles.map(async (selectedFile) => {
-        const upload = await uploadAPI.media(selectedFile);
-        return { mediaUrl: upload.data.data.url, mediaType: selectedFile.type?.startsWith('video/') ? 'video' : upload.data.data.mediaType };
-      })) : [{ mediaUrl: initialDraft?.mediaUrl || null, mediaType: initialDraft?.mediaType || 'text' }];
-      setUploadStage('publishing');
-      for (const item of items) {
-        await postAPI.create({ content: content.trim(), mediaUrl: item.mediaUrl, mediaType: item.mediaType, isCreatorAd: false });
+    const draftIdToClear = savedDraftId;
+    const started = startPostUpload({
+      files: selectedFiles,
+      content: content.trim(),
+      fallbackMedia: { mediaUrl: initialDraft?.mediaUrl || null, mediaType: initialDraft?.mediaType || 'text' },
+      onDone: () => {
+        if (draftIdToClear) { const key = `ra-social-drafts-${userId || 'guest'}`; const drafts = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify(drafts.filter(d => d.id !== draftIdToClear))); }
+        onPostCreated?.();
       }
-      if (savedDraftId) { const key = `ra-social-drafts-${userId || 'guest'}`; const drafts = JSON.parse(localStorage.getItem(key) || '[]'); localStorage.setItem(key, JSON.stringify(drafts.filter(d => d.id !== savedDraftId))); }
-      onPostCreated?.();
-      stopCamera();
-      onClose();
-    } catch (error) {
-      console.error('Failed to create post:', error);
-      alert('Couldn’t publish your post. Please try again.');
-      setUploadStage(null);
-    }
+    });
+    if (!started) { alert('Your previous upload is still running. Please wait until it finishes.'); return; }
+    stopCamera();
+    onClose();
   };
 
   return (

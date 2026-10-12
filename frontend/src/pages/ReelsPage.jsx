@@ -203,29 +203,15 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
             </div>
           </div>
 
-          <div className="absolute right-3 bottom-5 flex flex-col items-center gap-3 text-white z-20">
+          <div className="absolute right-3 bottom-20 flex flex-col items-center gap-3 text-white z-20">
             <div className="flex flex-col items-center gap-1"><Eye className="w-6 h-6" /><span className="text-xs">{(views[reel.id] || 0).toLocaleString()}</span></div>
             <button onClick={() => handleLike(reel.id)} className="flex flex-col items-center gap-1"><Heart className={`w-7 h-7 ${reel._liked ? 'fill-pink-500 text-pink-500' : ''}`} /><span className="text-xs">{reel.likesCount || 0}</span></button>
             <button onClick={() => openComments(reel)} className="flex flex-col items-center gap-1"><MessageCircle className="w-6 h-6" /><span className="text-xs">{reel.commentsCount || 0}</span></button>
             <button onClick={() => handleShare(reel)} className="flex flex-col items-center gap-1"><Share2 className="w-6 h-6" /><span className="text-xs">{sharedId === reel.id ? 'Copied!' : 'Share'}</span></button>
             <button onClick={() => handleDownload(reel)} disabled={downloadingId === reel.id} className="flex flex-col items-center gap-1 disabled:opacity-50"><Download className="w-6 h-6" /><span className="text-xs">{downloadingId === reel.id ? 'Saving...' : 'Download'}</span></button>
-            <div ref={el => { menuRefs.current[reel.id] = el; }} className="relative">
-              <button onClick={() => setMenuForId(menuForId === reel.id ? null : reel.id)} aria-label="More options"><MoreHorizontal className="w-6 h-6" /></button>
-              {menuForId === reel.id && (
-                <div className="absolute right-8 bottom-0 z-[60] w-48 bg-white rounded-xl shadow-2xl py-1 text-gray-800">
-                  <button onClick={async () => {
-                    try { await savedPostAPI.save(reel.id); alert('Saved'); } catch (e) { alert(e.response?.data?.message || 'Unable to save reel'); }
-                    setMenuForId(null);
-                  }} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Download className="w-4 h-4" />Save to Saved</button>
-                  <button onClick={() => copyLink(reel)} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><Link2 className="w-4 h-4" />Copy link</button>
-                  <button onClick={() => { window.open(reel.mediaUrl, '_blank', 'noopener,noreferrer'); setMenuForId(null); }} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-50"><ExternalLink className="w-4 h-4" />Open media</button>
-                  <button onClick={() => setMenuForId(null)} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><Flag className="w-4 h-4" />Report</button>
-                </div>
-              )}
-            </div>
           </div>
 
-          <div className="absolute left-4 right-20 bottom-5 text-white z-20 pb-1">
+          <div className="absolute left-4 right-20 bottom-20 text-white z-20 pb-1">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-blue-500 flex items-center justify-center text-xs font-bold">{(reel.user?.fullName?.[0] || reel.user?.username?.[0] || 'U').toUpperCase()}</div>
               <span className="font-semibold text-sm">{reel.user?.fullName || reel.user?.username}</span>

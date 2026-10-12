@@ -43,12 +43,14 @@ export const accountAPI = {
   delete: (password) => api.delete('/account', { data: { password } })
 };
 export const uploadAPI = {
-  media: (file) => {
+  media: (file, options = {}) => {
     const formData = new FormData();
     formData.append('file', file);
     return api.post('/posts/upload', formData, {
       // Let Axios/browser set the multipart boundary automatically.
-      headers: {}
+      headers: {},
+      onUploadProgress: options.onProgress,
+      signal: options.signal
     });
   }
 };
