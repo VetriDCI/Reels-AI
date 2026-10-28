@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, MessageCircle, Share2, Download, MoreHorizontal, Eye, Bell, Search as SearchIcon, X, Send, Link2, Flag, ExternalLink } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Download, MoreHorizontal, Play, Pause, Volume2, VolumeX, Maximize, Eye, Bell, Search as SearchIcon, X, Send, Link2, Flag, ExternalLink } from 'lucide-react';
 import { savedPostAPI, postAPI, followAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { downloadMedia } from '../utils/download';
@@ -20,6 +20,9 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   const [commentText, setCommentText] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
   const [views, setViews] = useState({});
+  const [muted, setMuted] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [times, setTimes] = useState({ t: 0, d: 0 });
   const containerRef = useRef(null);
   const itemRefs = useRef({});
   const videoRefs = useRef({});
@@ -54,7 +57,11 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
       if (!video) return;
       const shouldPlay = reels[current]?.id === id;
       if (shouldPlay) {
-        video.play().catch(() => {});
+        video.muted = muted;
+        video.play().catch(() => {
+          // Browser blocked autoplay with sound -> play muted; user can tap the speaker to unmute
+          if (!video.muted) { video.muted = true; setMuted(true); video.play().catch(() => {}); }
+        });
       } else {
         video.pause();
         video.currentTime = 0;
@@ -151,6 +158,35 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
     setMenuForId(null);
   };
 
+  const fmt = (sec) => { const n = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
+
+  const togglePlay = (id) => {
+    const v = videoRefs.current[id];
+    if (!v) return;
+    if (v.paused) v.play().catch(() => {}); else v.pause();
+  };
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    Object.values(videoRefs.current).forEach(v => { if (v) v.muted = next; });
+  };
+
+  const seekTo = (id, value) => {
+    const v = videoRefs.current[id];
+    if (!v) return;
+    v.currentTime = Number(value);
+    setTimes(prev => ({ ...prev, t: Number(value) }));
+  };
+
+  const toggleFullscreen = (id) => {
+    const el = itemRefs.current[id];
+    const v = videoRefs.current[id];
+    if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+    if (el?.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (v?.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  };
+
   const handleScroll = () => {
     if (!containerRef.current) return;
     const idx = Math.max(0, Math.min(visibleReels.length - 1, Math.round(containerRef.current.scrollTop / containerRef.current.clientHeight)));
@@ -177,16 +213,41 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
           <video
             ref={el => { videoRefs.current[reel.id] = el; }}
             src={reel.mediaUrl}
-            className="reel-video h-full w-full object-contain"
-            loop muted playsInline preload={i === current ? 'auto' : 'metadata'}
-            controls={i === current}
-            controlsList="nodownload noplaybackrate noremoteplayback"
-            disablePictureInPicture
-            disableRemotePlayback
-            onPlay={() => recordView(reel.id)}
+            className="h-full w-full object-contain"
+            loop playsInline preload={i === current ? 'auto' : 'metadata'}
+            onClick={() => togglePlay(reel.id)}
+            onPlay={() => { setPaused(false); recordView(reel.id); }}
+            onPause={() => setPaused(true)}
+            onTimeUpdate={e => { if (i === current) setTimes({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 }); }}
+            onLoadedMetadata={e => { if (i === current) setTimes({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 }); }}
             onError={() => setVideoErrors(prev => ({ ...prev, [reel.id]: true }))}
           />
           {videoErrors[reel.id] && <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 rounded-xl bg-black/80 p-4 text-center text-sm text-red-300">This video could not be loaded.</div>}
+
+          {i === current && paused && !videoErrors[reel.id] && (
+            <button onClick={() => togglePlay(reel.id)} aria-label="Play" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-16 h-16 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-8 h-8 text-black fill-black" /></button>
+          )}
+
+          {i === current && (
+            <div className="absolute left-3 right-3 bottom-2 z-30 text-white">
+              <div className="flex items-center gap-3 text-xs">
+                <span className="tabular-nums">{fmt(times.t)} / {fmt(times.d)}</span>
+                <div className="flex-1" />
+                <button onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} className="p-1">{muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}</button>
+                <button onClick={() => toggleFullscreen(reel.id)} aria-label="Fullscreen" className="p-1"><Maximize className="w-5 h-5" /></button>
+                <div className="relative" ref={el => { menuRefs.current[reel.id] = el; }}>
+                  <button onClick={() => setMenuForId(menuForId === reel.id ? null : reel.id)} aria-label="More options" className="p-1"><MoreHorizontal className="w-5 h-5" /></button>
+                  {menuForId === reel.id && (
+                    <div className="absolute right-0 bottom-9 min-w-[140px] rounded-xl bg-white text-gray-900 shadow-lg py-1 text-sm">
+                      <button onClick={() => copyLink(reel)} className="flex items-center gap-2 w-full px-4 py-2 hover:bg-gray-100"><Link2 className="w-4 h-4" />Copy link</button>
+                      <button onClick={() => { handleShare(reel); setMenuForId(null); }} className="flex items-center gap-2 w-full px-4 py-2 hover:bg-gray-100"><Share2 className="w-4 h-4" />Share</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <input type="range" min="0" max={times.d || 0} step="0.05" value={Math.min(times.t, times.d || 0)} onChange={e => seekTo(reel.id, e.target.value)} aria-label="Seek" className="w-full h-1 mt-1 accent-white cursor-pointer" />
+            </div>
+          )}
 
           <div className="absolute top-0 left-0 right-0 flex items-center gap-3 px-4 pt-4 text-white bg-gradient-to-b from-black/70 to-transparent pb-8 pointer-events-none">
             <span className="font-bold text-lg shrink-0">RA Social</span>
