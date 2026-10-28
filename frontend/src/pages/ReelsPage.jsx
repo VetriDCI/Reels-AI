@@ -177,9 +177,12 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
           <video
             ref={el => { videoRefs.current[reel.id] = el; }}
             src={reel.mediaUrl}
-            className="h-full w-full object-contain"
+            className="reel-video h-full w-full object-contain"
             loop muted playsInline preload={i === current ? 'auto' : 'metadata'}
             controls={i === current}
+            controlsList="nodownload noplaybackrate noremoteplayback"
+            disablePictureInPicture
+            disableRemotePlayback
             onPlay={() => recordView(reel.id)}
             onError={() => setVideoErrors(prev => ({ ...prev, [reel.id]: true }))}
           />
