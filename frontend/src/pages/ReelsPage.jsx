@@ -21,7 +21,7 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
   const [commentLoading, setCommentLoading] = useState(false);
   const [views, setViews] = useState({});
   const [muted, setMuted] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(true);
   const [times, setTimes] = useState({ t: 0, d: 0 });
   const containerRef = useRef(null);
   const itemRefs = useRef({});
@@ -58,10 +58,9 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
       const shouldPlay = reels[current]?.id === id;
       if (shouldPlay) {
         video.muted = muted;
-        video.play().catch(() => {
-          // Browser blocked autoplay with sound -> play muted; user can tap the speaker to unmute
-          if (!video.muted) { video.muted = true; setMuted(true); video.play().catch(() => {}); }
-        });
+        // Sound stays ON by default. If the browser blocks autoplay, the video waits paused
+        // (play button shown) and plays with sound when the user taps it.
+        video.play().catch(() => {});
       } else {
         video.pause();
         video.currentTime = 0;
@@ -216,8 +215,8 @@ export default function ReelsPage({ onNotifications, unreadNotificationCount, on
             className="h-full w-full object-contain"
             loop playsInline preload={i === current ? 'auto' : 'metadata'}
             onClick={() => togglePlay(reel.id)}
-            onPlay={() => { setPaused(false); recordView(reel.id); }}
-            onPause={() => setPaused(true)}
+            onPlay={() => { if (i === current) setPaused(false); recordView(reel.id); }}
+            onPause={() => { if (i === current) setPaused(true); }}
             onTimeUpdate={e => { if (i === current) setTimes({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 }); }}
             onLoadedMetadata={e => { if (i === current) setTimes({ t: e.currentTarget.currentTime, d: e.currentTarget.duration || 0 }); }}
             onError={() => setVideoErrors(prev => ({ ...prev, [reel.id]: true }))}
